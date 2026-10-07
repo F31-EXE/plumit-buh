@@ -7,20 +7,15 @@ import { grantAccess, revokeAccess } from '../lib/actions.js';
 import { listOperations } from '../lib/finance.js';
 import { downloadCsv } from '../lib/csv.js';
 import { loadDemo } from '../lib/demo.js';
-import { applyTheme, useApp } from '../App.jsx';
+import { useApp } from '../App.jsx';
+import { useTheme } from '../lib/theme.js';
 import { authError } from './Login.jsx';
 import { ErrorBox, Field, Icon, Segmented, useToast } from '../ui.jsx';
 
 export default function Settings() {
   const { me, isAdmin, logout, data } = useApp();
-  const [theme, setTheme] = useState(() => { try { return localStorage.getItem('theme') || 'auto'; } catch { return 'auto'; } });
+  const { theme, setTheme } = useTheme();
   const hasPassword = auth.currentUser?.providerData.some((p) => p.providerId === 'password');
-
-  function changeTheme(t) {
-    setTheme(t);
-    try { localStorage.setItem('theme', t); } catch { /* приватный режим */ }
-    applyTheme(t);
-  }
 
   return (
     <div className="stack" style={{ maxWidth: 720 }}>
@@ -30,7 +25,7 @@ export default function Settings() {
 
       <div className="card stack">
         <h2>Оформление</h2>
-        <Segmented value={theme} onChange={changeTheme} options={[['auto', 'Как в системе'], ['light', 'Светлая'], ['dark', 'Тёмная']]} />
+        <Segmented value={theme} onChange={(t) => setTheme(t)} options={[['auto', 'Как в системе'], ['light', 'Светлая'], ['dark', 'Тёмная']]} />
       </div>
 
       <div className="card stack">

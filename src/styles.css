@@ -299,3 +299,87 @@ table.table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
 
 .loading { padding: 60px; text-align: center; color: var(--text-3); }
+
+/* ---------- Логотип ---------- */
+.brand img, .logo { width: 40px; height: 40px; border-radius: 11px; flex: none; display: block; cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.logo.wiggle { animation: logo-wiggle .45s cubic-bezier(.36, .07, .19, .97); }
+@keyframes logo-wiggle {
+  20% { transform: rotate(-12deg) scale(1.08); }
+  45% { transform: rotate(9deg) scale(1.1); }
+  70% { transform: rotate(-4deg) scale(1.04); }
+  100% { transform: none; }
+}
+.sidebar-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; }
+.sidebar-head .brand { padding-right: 0; }
+.login .brand { padding: 0; }
+
+/* Мобильная шапка */
+.topbar { display: none; }
+@media (max-width: 860px) {
+  .topbar {
+    display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 15;
+    padding: calc(8px + env(safe-area-inset-top)) 16px 8px;
+    background: color-mix(in srgb, var(--bg) 85%, transparent);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    font-size: 17px; font-weight: 800;
+  }
+  .topbar .logo { width: 34px; height: 34px; border-radius: 9px; }
+  .main { padding-top: 8px; }
+}
+
+/* ---------- Переключатель темы ---------- */
+.theme-toggle {
+  width: 40px; height: 40px; flex: none; display: grid; place-items: center; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text);
+  transition: background-color .2s, transform .15s;
+}
+.theme-toggle:hover { background: var(--surface-2); }
+.theme-toggle:active { transform: scale(.92); }
+.theme-toggle svg { width: 22px; height: 22px; overflow: visible; }
+.theme-toggle .tt-core, .theme-toggle .tt-cut, .theme-toggle .tt-rays {
+  transition: transform .6s cubic-bezier(.5, 1.5, .5, 1), opacity .4s, r .5s cubic-bezier(.5, 1.5, .5, 1), cx .5s, cy .5s;
+  transform-origin: 12px 12px;
+}
+.theme-toggle .tt-rays { transform: rotate(0) scale(1); }
+.theme-toggle.is-dark .tt-core { r: 9px; }
+.theme-toggle.is-dark .tt-cut { cx: 17px; cy: 7px; }
+.theme-toggle.is-dark .tt-rays { transform: rotate(-90deg) scale(0); opacity: 0; }
+.theme-toggle.is-dark { color: #f5d77a; }
+.theme-toggle.corner { position: fixed; top: calc(16px + env(safe-area-inset-top)); right: 16px; z-index: 5; }
+
+/* Круговое раскрытие новой темы (View Transitions API) */
+::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-old(root) { z-index: 1; }
+::view-transition-new(root) { z-index: 2; }
+/* Запасной вариант без View Transitions */
+html.theme-fade, html.theme-fade * { transition: background-color .45s ease, color .45s ease, border-color .45s ease, fill .45s ease !important; }
+
+/* ---------- Пасхалка ---------- */
+.egg {
+  position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 20px;
+  background: radial-gradient(circle at 50% 40%, rgba(124, 77, 255, .35), rgba(5, 3, 10, .92) 70%);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  animation: egg-fade .3s ease;
+}
+.egg-card {
+  position: relative; height: min(82vh, 760px); aspect-ratio: 676 / 960; max-width: 100%;
+  border-radius: 24px; overflow: hidden; background: #000;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, .6), 0 0 0 1px rgba(255, 255, 255, .08);
+  animation: egg-pop .6s cubic-bezier(.2, 1.6, .4, 1);
+}
+.egg-card video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.egg-close {
+  position: absolute; top: 10px; right: 10px; width: 36px; height: 36px; border-radius: 50%; border: 0; cursor: pointer;
+  background: rgba(0, 0, 0, .55); color: #fff; font-size: 24px; line-height: 1;
+}
+.egg-play {
+  position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); border: 0; cursor: pointer;
+  padding: 12px 20px; border-radius: 99px; background: #fff; color: #000; font-weight: 800; white-space: nowrap;
+}
+@keyframes egg-fade { from { opacity: 0; } }
+@keyframes egg-pop { from { opacity: 0; transform: scale(.4) rotate(-12deg); } 60% { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .logo.wiggle, .egg, .egg-card { animation: none; }
+  .theme-toggle * { transition: none !important; }
+}

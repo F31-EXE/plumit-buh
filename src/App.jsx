@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useMemo, useState } from 'react';
 import { NavLink, Navigate, Route, Routes, matchPath, useLocation } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
 import { auth, configured } from './lib/firebase.js';
@@ -13,6 +13,8 @@ import Operations from './pages/Operations.jsx';
 import Team from './pages/Team.jsx';
 import Settings from './pages/Settings.jsx';
 import OperationForm from './components/OperationForm.jsx';
+import ThemeToggle from './components/ThemeToggle.jsx';
+import { Brand, EasterEggProvider, Logo } from './components/Brand.jsx';
 
 const AppCtx = createContext(null);
 export const useApp = () => useContext(AppCtx);
@@ -25,17 +27,13 @@ const NAV = [
   ['/settings', 'settings', 'Настройки', 'Ещё'],
 ];
 
-export function applyTheme(theme) {
-  if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
-  else delete document.documentElement.dataset.theme;
-}
-
 export default function App() {
-  useEffect(() => {
-    try { applyTheme(localStorage.getItem('theme')); } catch { /* приватный режим */ }
-  }, []);
   if (!configured) return <NotConfigured />;
-  return <ToastProvider><Gate /></ToastProvider>;
+  return (
+    <EasterEggProvider>
+      <ToastProvider><Gate /></ToastProvider>
+    </EasterEggProvider>
+  );
 }
 
 function Gate() {
@@ -80,9 +78,9 @@ function Shell({ user, role }) {
     <AppCtx.Provider value={ctx}>
       <div className="layout">
         <aside className="sidebar">
-          <div className="brand">
-            <img src="/icon.svg" alt="" />
-            <div>Plumit<small>Бухгалтерия проектов</small></div>
+          <div className="sidebar-head">
+            <Brand />
+            <ThemeToggle />
           </div>
           {NAV.map(([to, icon, label]) => (
             <NavLink key={to} to={to} end={to === '/'} className="nav-link"><Icon name={icon} />{label}</NavLink>
@@ -92,6 +90,12 @@ function Shell({ user, role }) {
             <button type="button" className="btn primary" onClick={newOperation}><Icon name="plus" />Операция</button>
           )}
         </aside>
+
+        <header className="topbar">
+          <Logo size={34} />
+          <strong className="grow">Plumit</strong>
+          <ThemeToggle />
+        </header>
 
         <main className="main">
           {data.error && <div className="error-box" style={{ marginBottom: 16 }}>Не удалось загрузить данные: {data.error.message}</div>}

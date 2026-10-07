@@ -5,6 +5,8 @@ import {
 } from 'firebase/auth';
 import { auth } from '../lib/firebase.js';
 import { ErrorBox, Field, Segmented } from '../ui.jsx';
+import { Brand } from '../components/Brand.jsx';
+import ThemeToggle from '../components/ThemeToggle.jsx';
 
 const ERRORS = {
   'auth/invalid-credential': 'Неверный email или пароль',
@@ -18,15 +20,6 @@ const ERRORS = {
   'auth/network-request-failed': 'Нет связи с сервером',
 };
 export const authError = (e) => new Error(ERRORS[e?.code] || e?.message || 'Ошибка');
-
-function Brand() {
-  return (
-    <div className="brand" style={{ padding: 0 }}>
-      <img src="/icon.svg" alt="" />
-      <div>Plumit<small>Бухгалтерия проектов</small></div>
-    </div>
-  );
-}
 
 export default function Login() {
   const [mode, setMode] = useState('in');
@@ -65,6 +58,7 @@ export default function Login() {
 
   return (
     <div className="login">
+      <ThemeToggle className="corner" />
       <div className="card stack">
         <Brand />
         <button type="button" className="btn" onClick={google} disabled={busy}>
@@ -119,6 +113,7 @@ export function VerifyEmail({ user }) {
   };
   return (
     <div className="login">
+      <ThemeToggle className="corner" />
       <div className="card stack">
         <Brand />
         <h2>Подтвердите почту</h2>
@@ -137,6 +132,7 @@ export function VerifyEmail({ user }) {
 export function NoAccess({ user }) {
   return (
     <div className="login">
+      <ThemeToggle className="corner" />
       <div className="card stack">
         <Brand />
         <h2>Нет доступа</h2>
