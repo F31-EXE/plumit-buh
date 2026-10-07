@@ -34,24 +34,6 @@ export function Icon({ name, ...rest }) {
 }
 export const OP_ICON = { income: 'in', payout: 'card', expense: 'receipt', tax: 'receipt', penalty: 'flag', transfer: 'swap' };
 
-// ---------- Загрузка данных ----------
-export function useLoad(fn, deps) {
-  const [state, setState] = useState({ data: null, error: null, loading: true });
-  const fnRef = useRef(fn);
-  fnRef.current = fn;
-  const reload = useCallback(() => {
-    let alive = true;
-    setState((s) => ({ ...s, loading: true }));
-    fnRef.current()
-      .then((data) => alive && setState({ data, error: null, loading: false }))
-      .catch((error) => alive && setState((s) => ({ data: s.data, error, loading: false })));
-    return () => { alive = false; };
-  }, []);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(reload, deps);
-  return { ...state, reload };
-}
-
 // ---------- Уведомления ----------
 const ToastCtx = createContext(() => {});
 export function ToastProvider({ children }) {
@@ -62,6 +44,14 @@ export function ToastProvider({ children }) {
     clearTimeout(timer.current);
     timer.current = setTimeout(() => setMsg(null), 2400);
   }, []);
+  useEffect(() => {
+    const onError = (e) => {
+      const code = e.detail?.code;
+      show(code === 'permission-denied' ? 'Нет прав на это действие' : `Не сохранилось: ${e.detail?.message || 'ошибка'}`);
+    };
+    window.addEventListener('plumit:write-error', onError);
+    return () => window.removeEventListener('plumit:write-error', onError);
+  }, [show]);
   return (
     <ToastCtx.Provider value={show}>
       {children}
@@ -141,8 +131,9 @@ export function Tabs({ value, onChange, options }) {
 }
 
 const AVATAR_COLORS = ['#7c4dff', '#0f9d8a', '#d9731f', '#2f6fdb', '#c2418f', '#5a8f29', '#8a5a2b'];
-export function Avatar({ name = '', id = 0 }) {
-  return <span className="avatar" style={{ background: AVATAR_COLORS[id % AVATAR_COLORS.length] }}>{name.slice(0, 1).toUpperCase()}</span>;
+export function Avatar({ name = '', id = '' }) {
+  const hash = [...String(id)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 0);
+  return <span className="avatar" style={{ background: AVATAR_COLORS[hash % AVATAR_COLORS.length] }}>{name.slice(0, 1).toUpperCase()}</span>;
 }
 
 export function Empty({ title, children }) {

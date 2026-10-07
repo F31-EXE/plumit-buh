@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { api } from '../api.js';
+import { deleteIteration, saveIteration } from '../lib/actions.js';
 import { ITERATION_STATUS, money, today } from '../format.js';
 import { ErrorBox, Field, Modal, MoneyInput, parseMoney, useToast } from '../ui.jsx';
 
@@ -33,7 +33,7 @@ export default function IterationForm({ project, iteration, onClose, onSaved }) 
     setF((s) => ({ ...s, shares: Object.fromEntries(people.map((p) => [p.id, String(each)])) }));
   };
 
-  async function submit(e) {
+  function submit(e) {
     e.preventDefault();
     const body = {
       ...f,
@@ -42,16 +42,16 @@ export default function IterationForm({ project, iteration, onClose, onSaved }) 
       shares: Object.fromEntries(Object.entries(f.shares).map(([k, v]) => [k, parseMoney(v)])),
     };
     try {
-      if (iteration) await api.put(`/iterations/${iteration.id}`, body);
-      else await api.post(`/projects/${project.id}/iterations`, body);
+      const nextSort = Math.max(0, ...project.iterations.map((it) => it.sort || 0)) + 1;
+      saveIteration(iteration?.id, project.id, body, nextSort);
       toast('Итерация сохранена');
       onSaved();
     } catch (err) { setError(err); }
   }
 
-  async function remove() {
+  function remove() {
     if (!confirm('Удалить итерацию? Начисления по ней пропадут.')) return;
-    try { await api.del(`/iterations/${iteration.id}`); onSaved(); } catch (err) { setError(err); }
+    try { deleteIteration(iteration.id); onSaved(); } catch (err) { setError(err); }
   }
 
   return (

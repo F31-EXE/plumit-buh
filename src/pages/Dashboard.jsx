@@ -1,20 +1,18 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api, qs } from '../api.js';
 import { useApp } from '../App.jsx';
 import { PROJECT_STATUS, money, monthLabel, thisMonth } from '../format.js';
-import { Avatar, Empty, ErrorBox, Loading, MonthPicker, Stat, useLoad } from '../ui.jsx';
+import { Avatar, Empty, MonthPicker, Stat } from '../ui.jsx';
+import { dashboard, listOperations } from '../lib/finance.js';
 import CashChart from '../components/CashChart.jsx';
 import OperationsList from '../components/OperationsList.jsx';
 
 export default function Dashboard() {
-  const { version, me } = useApp();
+  const { data: all, me } = useApp();
   const navigate = useNavigate();
   const [month, setMonth] = useState(thisMonth());
-  const { data, error } = useLoad(() => api.get(`/dashboard${qs({ month })}`), [month, version]);
-  const ops = useLoad(() => api.get(`/operations${qs({ limit: 8 })}`), [version]);
-
-  if (!data) return error ? <ErrorBox error={error} /> : <Loading />;
+  const data = useMemo(() => dashboard(all, month), [all, month]);
+  const recent = useMemo(() => listOperations(all, { limit: 8 }), [all]);
   const { total, monthFlow } = data;
   const due = data.teamDue.reduce((a, m) => a + m.due, 0);
 
@@ -92,7 +90,7 @@ export default function Dashboard() {
 
         <div className="card flush">
           <div className="card-head"><h2>Последние операции</h2><Link to="/operations" className="btn sm ghost">Все</Link></div>
-          {ops.data && <OperationsList operations={ops.data} />}
+          <OperationsList operations={recent} />
         </div>
       </div>
     </div>

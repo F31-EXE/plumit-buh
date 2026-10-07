@@ -1,29 +1,30 @@
-import { useState } from 'react';
-import { api, qs } from '../api.js';
+import { useMemo, useState } from 'react';
 import { useApp } from '../App.jsx';
 import { OP_TYPES, thisMonth } from '../format.js';
-import { ErrorBox, Icon, Loading, MonthPicker, Segmented, Stat, useLoad } from '../ui.jsx';
+import { Icon, MonthPicker, Segmented, Stat } from '../ui.jsx';
+import { listOperations } from '../lib/finance.js';
+import { downloadCsv } from '../lib/csv.js';
 import MonthGrid from '../components/MonthGrid.jsx';
 import OperationsList from '../components/OperationsList.jsx';
 
 export default function Operations() {
-  const { version, projects, members } = useApp();
+  const { data: all, projects, members } = useApp();
   const [month, setMonth] = useState(thisMonth());
   const [allTime, setAllTime] = useState(false);
   const [type, setType] = useState('');
   const [projectId, setProjectId] = useState('');
   const [view, setView] = useState('list');
   const filters = { month: allTime ? '' : month, type, project_id: projectId };
-  const { data, error } = useLoad(() => api.get(`/operations${qs(filters)}`), [month, allTime, type, projectId, version]);
+  const data = useMemo(() => listOperations(all, filters), [all, month, allTime, type, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const sum = (t) => (data || []).filter((o) => o.type === t).reduce((a, o) => a + o.amount, 0);
-  const gridMembers = projectId ? (projects.find((p) => String(p.id) === projectId)?.summary.team.map((t) => ({ id: t.member_id, name: t.name })) || []) : members.filter((m) => m.active);
+  const sum = (t) => data.filter((o) => o.type === t).reduce((a, o) => a + o.amount, 0);
+  const gridMembers = projectId ? (projects.find((p) => p.id === projectId)?.summary.team.map((t) => ({ id: t.member_id, name: t.name })) || []) : members.filter((m) => m.active);
 
   return (
     <div className="stack">
       <div className="page-head" style={{ marginBottom: 0 }}>
         <div><h1>Операции</h1><div className="sub">Журнал всех поступлений, выплат и расходов</div></div>
-        <a className="btn" href={`/api/export/operations.csv${qs(filters)}`}><Icon name="download" />CSV для Excel</a>
+        <button type="button" className="btn" onClick={() => downloadCsv(data)}><Icon name="download" />CSV для Excel</button>
       </div>
 
       <div className="toolbar" style={{ marginBottom: 0 }}>
@@ -40,22 +41,18 @@ export default function Operations() {
         {!allTime && <Segmented value={view} onChange={setView} options={[['list', 'Список'], ['grid', 'По дням']]} />}
       </div>
 
-      {data && (
-        <div className="stats four">
-          <Stat label="Поступления" value={sum('income')} tone="pos" />
-          <Stat label="Выплаты команде" value={sum('payout')} />
-          <Stat label="Расходы" value={sum('expense')} />
-          <Stat label="Налоги и взносы" value={sum('tax')} />
-        </div>
-      )}
+      <div className="stats four">
+        <Stat label="Поступления" value={sum('income')} tone="pos" />
+        <Stat label="Выплаты команде" value={sum('payout')} />
+        <Stat label="Расходы" value={sum('expense')} />
+        <Stat label="Налоги и взносы" value={sum('tax')} />
+      </div>
 
-      <ErrorBox error={error} />
       <div className="card flush">
-        {!data ? <Loading /> : view === 'grid' && !allTime
+        {view === 'grid' && !allTime
           ? <MonthGrid month={month} operations={data} members={gridMembers} />
           : <OperationsList operations={data} emptyText={allTime ? 'Операций нет' : 'В этом месяце операций нет'} />}
       </div>
-      {data?.length >= 1000 && <div className="faint small">Показаны последние 1000 операций — сузьте фильтр.</div>}
     </div>
   );
 }

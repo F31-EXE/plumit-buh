@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import { api } from '../api.js';
+import { useMemo, useState } from 'react';
+import { addOperation, deleteOperation, updateOperation } from '../lib/actions.js';
+import { categories as listCategories } from '../lib/finance.js';
 import { useApp } from '../App.jsx';
 import { OP_TYPES, memberLabel, today } from '../format.js';
 import { ErrorBox, Field, Modal, MoneyInput, Segmented, parseMoney, useToast } from '../ui.jsx';
@@ -10,7 +11,7 @@ const HAS_CATEGORY = ['expense', 'tax'];
 const DEFAULT_CATEGORIES = { expense: ['Банк', 'Сервера', 'Сервисы', 'Реклама'], tax: ['УСН', 'Взносы', 'НДФЛ'] };
 
 export default function OperationForm({ initial, onClose, onSaved }) {
-  const { members, projects } = useApp();
+  const { members, projects, data, me } = useApp();
   const toast = useToast();
   const editing = Boolean(initial.id);
   const [f, setF] = useState(() => ({
@@ -26,11 +27,8 @@ export default function OperationForm({ initial, onClose, onSaved }) {
     amount: initial.amount ? String(initial.amount) : '',
   }));
   const [error, setError] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const [categories, setCategories] = useState([]);
+  const categories = useMemo(() => listCategories(data), [data]);
   const set = (k) => (v) => setF((s) => ({ ...s, [k]: v?.target ? (v.target.type === 'checkbox' ? v.target.checked : v.target.value) : v }));
-
-  useEffect(() => { api.get('/categories').then(setCategories).catch(() => {}); }, []);
 
   // Сначала участники выбранного проекта, затем остальные
   const memberOptions = useMemo(() => {
@@ -42,10 +40,9 @@ export default function OperationForm({ initial, onClose, onSaved }) {
 
   const catOptions = [...new Set([...(DEFAULT_CATEGORIES[f.type] || []), ...categories])];
 
-  async function submit(e) {
+  function submit(e) {
     e.preventDefault();
     setError(null);
-    setSaving(true);
     const body = {
       ...f,
       amount: parseMoney(f.amount),
@@ -54,20 +51,19 @@ export default function OperationForm({ initial, onClose, onSaved }) {
       from_member_id: f.from_member_id || null,
     };
     try {
-      if (editing) await api.put(`/operations/${f.id}`, body);
-      else await api.post('/operations', body);
+      if (editing) updateOperation(f.id, body);
+      else addOperation(body, me.email);
       toast(editing ? 'Сохранено' : 'Операция добавлена');
       onSaved();
     } catch (err) {
       setError(err);
-      setSaving(false);
     }
   }
 
-  async function remove() {
+  function remove() {
     if (!confirm('Удалить операцию?')) return;
     try {
-      await api.del(`/operations/${f.id}`);
+      deleteOperation(f.id);
       toast('Удалено');
       onSaved();
     } catch (err) { setError(err); }
@@ -81,7 +77,7 @@ export default function OperationForm({ initial, onClose, onSaved }) {
         <>
           {editing && <button type="button" className="btn danger left" onClick={remove}>Удалить</button>}
           <button type="button" className="btn" onClick={onClose}>Отмена</button>
-          <button type="submit" form="op-form" className="btn primary" disabled={saving}>{saving ? 'Сохраняю…' : 'Сохранить'}</button>
+          <button type="submit" form="op-form" className="btn primary">Сохранить</button>
         </>
       )}
     >

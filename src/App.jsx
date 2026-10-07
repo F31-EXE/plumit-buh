@@ -1,8 +1,11 @@
-import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { NavLink, Navigate, Route, Routes, matchPath, useLocation } from 'react-router-dom';
-import { api } from './api.js';
+import { signOut } from 'firebase/auth';
+import { auth, configured } from './lib/firebase.js';
+import { DataProvider, useAuthUser, useData, useRole } from './lib/store.jsx';
+import { membersWithBalance, projectsWithSummary } from './lib/finance.js';
 import { Icon, Loading, ToastProvider } from './ui.jsx';
-import Login from './pages/Login.jsx';
+import Login, { NoAccess, VerifyEmail } from './pages/Login.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Projects from './pages/Projects.jsx';
 import Project from './pages/Project.jsx';
@@ -28,42 +31,49 @@ export function applyTheme(theme) {
 }
 
 export default function App() {
-  const [me, setMe] = useState(undefined);
-
   useEffect(() => {
     try { applyTheme(localStorage.getItem('theme')); } catch { /* приватный режим */ }
-    api.get('/auth/me').then(setMe).catch(() => setMe(null));
-    const onUnauthorized = () => setMe(null);
-    window.addEventListener('plumit:unauthorized', onUnauthorized);
-    return () => window.removeEventListener('plumit:unauthorized', onUnauthorized);
   }, []);
-
-  if (me === undefined) return <Loading />;
-  return <ToastProvider>{me ? <Shell me={me} onLogout={() => setMe(null)} /> : <Login onLogin={setMe} />}</ToastProvider>;
+  if (!configured) return <NotConfigured />;
+  return <ToastProvider><Gate /></ToastProvider>;
 }
 
-function Shell({ me, onLogout }) {
-  const [members, setMembers] = useState([]);
-  const [projects, setProjects] = useState([]);
-  const [version, setVersion] = useState(0);
+function Gate() {
+  const user = useAuthUser();
+  const role = useRole(user);
+  if (user === undefined) return <Loading />;
+  if (!user) return <Login />;
+  if (!user.emailVerified) return <VerifyEmail user={user} />;
+  if (role === undefined) return <Loading />;
+  if (!role) return <NoAccess user={user} />;
+  return (
+    <DataProvider>
+      <Shell user={user} role={role} />
+    </DataProvider>
+  );
+}
+
+function Shell({ user, role }) {
+  const data = useData();
   const [opForm, setOpForm] = useState(null);
-
-  const loadRefs = useCallback(() => {
-    api.get('/members').then(setMembers).catch(() => {});
-    api.get('/projects').then(setProjects).catch(() => {});
-  }, []);
-  useEffect(loadRefs, [loadRefs, version]);
-
-  const changed = useCallback(() => setVersion((v) => v + 1), []);
-  const isAdmin = me.role === 'admin';
   const location = useLocation();
+  const isAdmin = role === 'admin';
+
+  const members = useMemo(() => membersWithBalance(data), [data]);
+  const projects = useMemo(() => projectsWithSummary(data), [data]);
+
   // На странице проекта новая операция сразу привязывается к нему
   const currentProject = matchPath('/projects/:id', location.pathname)?.params.id;
-  const newOperation = () => setOpForm(currentProject ? { project_id: Number(currentProject) } : {});
+  const newOperation = () => setOpForm(currentProject ? { project_id: currentProject } : {});
 
   const ctx = {
-    me, isAdmin, members, projects, version, changed, onLogout,
+    me: { name: user.displayName || user.email.split('@')[0], email: user.email, role },
+    isAdmin,
+    data,
+    members,
+    projects,
     openOperation: (preset = {}) => isAdmin && setOpForm(preset),
+    logout: () => signOut(auth),
   };
 
   return (
@@ -84,15 +94,18 @@ function Shell({ me, onLogout }) {
         </aside>
 
         <main className="main">
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/projects" element={<Projects />} />
-            <Route path="/projects/:id" element={<Project />} />
-            <Route path="/operations" element={<Operations />} />
-            <Route path="/team" element={<Team />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+          {data.error && <div className="error-box" style={{ marginBottom: 16 }}>Не удалось загрузить данные: {data.error.message}</div>}
+          {!data.ready ? <Loading /> : (
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/projects" element={<Projects />} />
+              <Route path="/projects/:id" element={<Project />} />
+              <Route path="/operations" element={<Operations />} />
+              <Route path="/team" element={<Team />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          )}
         </main>
 
         <nav className="tabbar">
@@ -105,13 +118,20 @@ function Shell({ me, onLogout }) {
         )}
       </div>
 
-      {opForm && (
-        <OperationForm
-          initial={opForm}
-          onClose={() => setOpForm(null)}
-          onSaved={() => { setOpForm(null); changed(); }}
-        />
-      )}
+      {opForm && <OperationForm initial={opForm} onClose={() => setOpForm(null)} onSaved={() => setOpForm(null)} />}
     </AppCtx.Provider>
+  );
+}
+
+function NotConfigured() {
+  return (
+    <div className="login">
+      <div className="card stack">
+        <h2>Firebase не настроен</h2>
+        <p className="muted" style={{ margin: 0 }}>
+          Создайте файл <code>.env.local</code> с ключами веб-приложения Firebase (образец — <code>.env.example</code>) и пересоберите приложение.
+        </p>
+      </div>
+    </div>
   );
 }

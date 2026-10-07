@@ -6,7 +6,7 @@ import { Empty, Icon } from '../ui.jsx';
 import ProjectForm from '../components/ProjectForm.jsx';
 
 export default function Projects() {
-  const { projects, isAdmin, changed } = useApp();
+  const { projects, isAdmin } = useApp();
   const [creating, setCreating] = useState(false);
   const navigate = useNavigate();
 
@@ -51,7 +51,7 @@ export default function Projects() {
       </div>
 
       {creating && (
-        <ProjectForm onClose={() => setCreating(false)} onSaved={(id) => { setCreating(false); changed(); if (id) navigate(`/projects/${id}`); }} />
+        <ProjectForm onClose={() => setCreating(false)} onSaved={(id) => { setCreating(false); if (id) navigate(`/projects/${id}`); }} />
       )}
     </div>
   );

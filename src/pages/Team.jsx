@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { api } from '../api.js';
+import { deleteMember, saveMember } from '../lib/actions.js';
 import { useApp } from '../App.jsx';
 import { money } from '../format.js';
 import { Avatar, Empty, ErrorBox, Field, Icon, Modal, useToast } from '../ui.jsx';
 
 export default function Team() {
-  const { members, isAdmin, changed } = useApp();
+  const { members, isAdmin } = useApp();
   const [form, setForm] = useState(null);
   const totalDue = members.reduce((a, m) => a + m.balance.due, 0);
 
@@ -36,27 +36,28 @@ export default function Team() {
         ) : <Empty title="В команде пока никого">Добавьте PM, разработчиков и дизайнеров.</Empty>}
       </div>
       <p className="faint small">Начислено — сумма долей во всех итерациях (кроме отменённых). Отрицательный остаток — переплата.</p>
-      {form && <MemberForm member={form.id ? form : null} onClose={() => setForm(null)} onSaved={() => { setForm(null); changed(); }} />}
+      {form && <MemberForm member={form.id ? form : null} onClose={() => setForm(null)} onSaved={() => setForm(null)} />}
     </div>
   );
 }
 
 function MemberForm({ member, onClose, onSaved }) {
+  const { data } = useApp();
   const toast = useToast();
   const [f, setF] = useState({ name: member?.name || '', role: member?.role || '', active: member ? member.active : true });
   const [error, setError] = useState(null);
 
-  async function submit(e) {
+  function submit(e) {
     e.preventDefault();
     try {
-      if (member) await api.put(`/members/${member.id}`, f); else await api.post('/members', f);
+      saveMember(member?.id, f);
       toast('Сохранено');
       onSaved();
     } catch (err) { setError(err); }
   }
-  async function remove() {
+  function remove() {
     if (!confirm(`Удалить ${member.name}?`)) return;
-    try { await api.del(`/members/${member.id}`); onSaved(); } catch (err) { setError(err); }
+    try { deleteMember(member.id, data); onSaved(); } catch (err) { setError(err); }
   }
 
   return (

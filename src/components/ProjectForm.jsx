@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { api } from '../api.js';
+import { deleteProject, saveProject } from '../lib/actions.js';
 import { useApp } from '../App.jsx';
 import { PROJECT_STATUS, memberLabel } from '../format.js';
 import { ErrorBox, Field, Modal, MoneyInput, parseMoney, useToast } from '../ui.jsx';
@@ -14,25 +14,24 @@ export default function ProjectForm({ project, onClose, onSaved }) {
     status: project?.status || 'active',
     start_date: project?.start_date || '',
     notes: project?.notes || '',
-    members: project?.members?.map((m) => m.id) || [],
+    members: project?.member_ids || [],
   }));
   const [error, setError] = useState(null);
   const set = (k) => (e) => setF((s) => ({ ...s, [k]: e?.target ? e.target.value : e }));
   const toggle = (id) => setF((s) => ({ ...s, members: s.members.includes(id) ? s.members.filter((x) => x !== id) : [...s.members, id] }));
 
-  async function submit(e) {
+  function submit(e) {
     e.preventDefault();
     try {
-      const body = { ...f, budget: parseMoney(f.budget) };
-      const res = project ? await api.put(`/projects/${project.id}`, body) : await api.post('/projects', body);
+      const id = saveProject(project?.id, { ...f, budget: parseMoney(f.budget) });
       toast(project ? 'Проект сохранён' : 'Проект создан');
-      onSaved(res.id || project.id);
+      onSaved(id);
     } catch (err) { setError(err); }
   }
 
-  async function remove() {
+  function remove() {
     if (!confirm(`Удалить проект «${project.name}» вместе со всеми итерациями и операциями?`)) return;
-    try { await api.del(`/projects/${project.id}`); toast('Проект удалён'); onSaved(null); } catch (err) { setError(err); }
+    try { deleteProject(project.id); toast('Проект удалён'); onSaved(null); } catch (err) { setError(err); }
   }
 
   return (

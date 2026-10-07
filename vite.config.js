@@ -3,9 +3,14 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  server: {
-    port: 5173,
-    host: true,
-    proxy: { '/api': `http://localhost:${process.env.PORT || 3000}` },
+  server: { port: 5173, host: true },
+  build: {
+    rollupOptions: {
+      output: {
+        // Firebase SDK — отдельным файлом: он меняется реже кода приложения и лучше кэшируется
+        manualChunks: (id) => (id.includes('node_modules/firebase') || id.includes('node_modules/@firebase') ? 'firebase' : undefined),
+      },
+    },
+    chunkSizeWarningLimit: 700,
   },
 });

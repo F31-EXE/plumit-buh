@@ -2,26 +2,27 @@
   "name": "plumit-buh",
   "private": true,
   "version": "1.0.0",
-  "description": "Бухгалтерия проектов студии Plumit — веб и мобильное (PWA) приложение",
+  "description": "Бухгалтерия проектов студии Plumit — веб и мобильное (PWA) приложение на Firebase",
   "type": "module",
-  "engines": {
-    "node": ">=22.5"
-  },
   "scripts": {
-    "dev": "node scripts/dev.js",
+    "dev": "vite",
+    "dev:emulators": "firebase emulators:exec --project demo-plumit --only auth,firestore \"vite --mode emulators\"",
     "build": "vite build",
-    "start": "node --disable-warning=ExperimentalWarning server/index.js",
-    "seed": "node --disable-warning=ExperimentalWarning server/seed.js",
-    "test": "node --disable-warning=ExperimentalWarning --test server/*.test.js"
+    "preview": "vite preview",
+    "deploy": "vite build && firebase deploy",
+    "test": "node --test tests/finance.test.js",
+    "test:rules": "firebase emulators:exec --project demo-plumit --only firestore \"node --test tests/rules.test.js\""
   },
   "dependencies": {
-    "express": "^4.22.3",
+    "firebase": "^11.10.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.30.6"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
     "@vitejs/plugin-react": "^4.7.0",
+    "firebase-tools": "^15.32.1",
     "vite": "^5.4.21"
   }
 }

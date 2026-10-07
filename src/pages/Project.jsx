@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, qs } from '../api.js';
 import { useApp } from '../App.jsx';
 import { ITERATION_STATUS, PROJECT_STATUS, money, thisMonth } from '../format.js';
-import { Avatar, Empty, ErrorBox, Icon, Loading, MonthPicker, Segmented, Stat, Tabs, useLoad } from '../ui.jsx';
+import { Avatar, Empty, Icon, MonthPicker, Segmented, Stat, Tabs } from '../ui.jsx';
+import { listOperations, projectView } from '../lib/finance.js';
 import IterationForm from '../components/IterationForm.jsx';
 import MonthGrid from '../components/MonthGrid.jsx';
 import OperationsList from '../components/OperationsList.jsx';
@@ -12,14 +12,14 @@ import ProjectForm from '../components/ProjectForm.jsx';
 export default function Project() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { version, changed, isAdmin, openOperation } = useApp();
+  const { data, isAdmin, openOperation } = useApp();
   const [tab, setTab] = useState('overview');
   const [editing, setEditing] = useState(false);
   const [iterForm, setIterForm] = useState(null);
-  const { data: p, error } = useLoad(() => api.get(`/projects/${id}`), [id, version]);
-  const ops = useLoad(() => api.get(`/operations${qs({ project_id: id })}`), [id, version]);
+  const p = useMemo(() => projectView(data, id), [data, id]);
+  const ops = useMemo(() => listOperations(data, { project_id: id }), [data, id]);
 
-  if (!p) return error ? <ErrorBox error={error} /> : <Loading />;
+  if (!p) return <Empty title="Проект не найден"><Link to="/projects" className="btn sm" style={{ marginTop: 10 }}>К проектам</Link></Empty>;
   const s = p.summary;
 
   return (
@@ -43,15 +43,15 @@ export default function Project() {
       {tab === 'overview' && <Overview p={p} s={s} />}
       {tab === 'iterations' && <Iterations p={p} onEdit={setIterForm} />}
       {tab === 'operations' && (
-        <div className="card flush">{ops.data ? <OperationsList operations={ops.data} showProject={false} /> : <Loading />}</div>
+        <div className="card flush"><OperationsList operations={ops} showProject={false} /></div>
       )}
-      {tab === 'calendar' && <Calendar p={p} operations={ops.data || []} />}
+      {tab === 'calendar' && <Calendar p={p} operations={ops} />}
 
       {editing && (
-        <ProjectForm project={p} onClose={() => setEditing(false)} onSaved={(pid) => { setEditing(false); changed(); if (!pid) navigate('/projects'); }} />
+        <ProjectForm project={p} onClose={() => setEditing(false)} onSaved={(pid) => { setEditing(false); if (!pid) navigate('/projects'); }} />
       )}
       {iterForm && (
-        <IterationForm project={p} iteration={iterForm.id ? iterForm : null} onClose={() => setIterForm(null)} onSaved={() => { setIterForm(null); changed(); }} />
+        <IterationForm project={p} iteration={iterForm.id ? iterForm : null} onClose={() => setIterForm(null)} onSaved={() => setIterForm(null)} />
       )}
     </div>
   );
