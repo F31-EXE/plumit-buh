@@ -23,12 +23,11 @@
 1. Создайте проект в [консоли Firebase](https://console.firebase.google.com). Google Analytics не нужен.
 2. **Authentication → Начать → Sign-in method**: включите **Google** и **Email/Password**.
 3. **Firestore Database → Создать базу** в рабочем режиме (production). Регион — `europe-west` (ближе к России).
-4. **Настройки проекта → Общие → Ваши приложения → Веб (`</>`)**: зарегистрируйте приложение и скопируйте конфигурацию в файл `.env.local` по образцу `.env.example`.
+4. Конфигурация веб-приложения проекта `plumit-buh` уже лежит в `.env`, а привязка к проекту — в `.firebaserc`. Для другого проекта: **Настройки проекта → Ваши приложения → Веб (`</>`)**, значения — в `.env.local` по образцу `.env.example`, ID проекта — в `.firebaserc`.
 5. Установите зависимости и войдите в Firebase CLI:
    ```bash
    npm install
    npx firebase login
-   npx firebase use --add      # выберите созданный проект
    ```
 6. Опубликуйте правила и сайт:
    ```bash
