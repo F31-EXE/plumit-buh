@@ -43,15 +43,17 @@
 
 При каждом push в ветку по умолчанию GitHub прогоняет тесты (расчёты и правила безопасности) и выкладывает сайт и правила Firestore в Firebase. Pull request'ы и другие ветки только тестируются. Ход выкладки — во вкладке **Actions** репозитория.
 
-Один раз нужно дать GitHub ключ доступа к проекту:
+Вход в Google — без ключей, через Workload Identity Federation: GitHub получает от Google временный пропуск при каждом запуске, и только для этого репозитория. Настройка — один раз:
 
-1. Откройте [Google Cloud Console → IAM → Сервисные аккаунты](https://console.cloud.google.com/iam-admin/serviceaccounts?project=plumit-buh) (проект `plumit-buh`) → **Create service account**. Имя — `github-deploy` → **Create and continue**.
-2. Добавьте роли **Firebase Admin** и **Service Usage Consumer** → **Continue** → **Done**.
-3. Откройте созданный аккаунт → вкладка **Keys** → **Add key → Create new key → JSON**. Скачается файл с ключом.
-4. В GitHub: репозиторий → **Settings → Secrets and variables → Actions → New repository secret**. Имя `FIREBASE_SERVICE_ACCOUNT`, значение — всё содержимое скачанного JSON-файла.
-5. Удалите скачанный файл с компьютера. **Actions → «Тесты и выкладка» → Run workflow** запустит первую выкладку.
+1. Откройте [Google Cloud Shell](https://shell.cloud.google.com/?show=terminal) под аккаунтом владельца проекта `plumit-buh`.
+2. Выполните:
+   ```bash
+   bash <(curl -fsSL https://raw.githubusercontent.com/F31-EXE/plumit-buh/claude/epic-gates-eun66q/scripts/setup-github-deploy.sh)
+   ```
+   Скрипт включит нужные API, создаст сервисный аккаунт `github-deploy` с ролями **Firebase Admin** и **Service Usage Consumer** и разрешит репозиторию `F31-EXE/plumit-buh` входить от его имени. Повторный запуск безопасен.
+3. **Actions → «Тесты и выкладка» → Run workflow** — первая выкладка.
 
-Ключ — это пароль от проекта: не пересылайте его и не добавляйте в код. Если он утёк, удалите его на вкладке **Keys** и создайте новый.
+Если репозиторий переедет или переименуется, поправьте `REPO` в `scripts/setup-github-deploy.sh` и запустите скрипт снова.
 
 ## Разработка
 

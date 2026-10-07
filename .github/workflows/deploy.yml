@@ -38,33 +38,27 @@ jobs:
     environment:
       name: production
       url: https://plumit-buh.web.app
+    # id-token нужен для входа в Google без ключей (Workload Identity Federation)
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - name: Проверка ключа
-        id: key
-        env:
-          KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-        run: |
-          if [ -z "$KEY" ]; then
-            echo "::warning::Выкладка пропущена: не задан секрет FIREBASE_SERVICE_ACCOUNT (см. README, раздел «Автовыкладка»)"
-            echo "ok=false" >> "$GITHUB_OUTPUT"
-          else
-            printf '%s' "$KEY" > "$RUNNER_TEMP/firebase-key.json"
-            echo "ok=true" >> "$GITHUB_OUTPUT"
-          fi
-      - if: steps.key.outputs.ok == 'true'
-        run: npm ci
-      - if: steps.key.outputs.ok == 'true'
-        run: npm run build
+      - name: Вход в Google Cloud без ключа
+        uses: google-github-actions/auth@v2
+        with:
+          # Создаётся скриптом scripts/setup-github-deploy.sh (см. README, «Автовыкладка»)
+          workload_identity_provider: projects/981677926973/locations/global/workloadIdentityPools/github/providers/github
+          service_account: github-deploy@plumit-buh.iam.gserviceaccount.com
+      - run: npm ci
+      - run: npm run build
       - name: Деплой (сайт + правила Firestore)
-        if: steps.key.outputs.ok == 'true'
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-key.json
         run: npx firebase deploy --only hosting,firestore:rules --non-interactive
-      - name: Удаление ключа
-        if: always()
-        run: rm -f "$RUNNER_TEMP/firebase-key.json"
+      - name: Подсказка
+        if: failure()
+        run: |
+          echo "::error::Выкладка не удалась. Если это первый запуск — выполните scripts/setup-github-deploy.sh в Google Cloud Shell (README, раздел «Автовыкладка») и перезапустите workflow."
