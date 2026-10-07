@@ -383,3 +383,4 @@ html.theme-fade, html.theme-fade * { transition: background-color .45s ease, col
   .logo.wiggle, .egg, .egg-card { animation: none; }
   .theme-toggle * { transition: none !important; }
 }
+.link { border: 0; background: none; padding: 0; color: var(--accent); font: inherit; font-weight: 700; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
