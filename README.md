@@ -39,6 +39,20 @@
    Остальных людей добавляйте прямо в приложении: **Настройки → Доступ**.
 8. Чтобы посмотреть приложение на примере, в пустой базе есть кнопка **Настройки → Загрузить демо-данные** (вымышленные проекты).
 
+## Автовыкладка (GitHub Actions)
+
+При каждом push в ветку по умолчанию GitHub прогоняет тесты (расчёты и правила безопасности) и выкладывает сайт и правила Firestore в Firebase. Pull request'ы и другие ветки только тестируются. Ход выкладки — во вкладке **Actions** репозитория.
+
+Один раз нужно дать GitHub ключ доступа к проекту:
+
+1. Откройте [Google Cloud Console → IAM → Сервисные аккаунты](https://console.cloud.google.com/iam-admin/serviceaccounts?project=plumit-buh) (проект `plumit-buh`) → **Create service account**. Имя — `github-deploy` → **Create and continue**.
+2. Добавьте роли **Firebase Admin** и **Service Usage Consumer** → **Continue** → **Done**.
+3. Откройте созданный аккаунт → вкладка **Keys** → **Add key → Create new key → JSON**. Скачается файл с ключом.
+4. В GitHub: репозиторий → **Settings → Secrets and variables → Actions → New repository secret**. Имя `FIREBASE_SERVICE_ACCOUNT`, значение — всё содержимое скачанного JSON-файла.
+5. Удалите скачанный файл с компьютера. **Actions → «Тесты и выкладка» → Run workflow** запустит первую выкладку.
+
+Ключ — это пароль от проекта: не пересылайте его и не добавляйте в код. Если он утёк, удалите его на вкладке **Keys** и создайте новый.
+
 ## Разработка
 
 ```bash

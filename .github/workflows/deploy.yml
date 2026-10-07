@@ -1,0 +1,70 @@
+name: Тесты и выкладка
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Тесты
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # Java нужна эмулятору Firestore для тестов правил безопасности
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - run: npm test
+      - run: npm run test:rules
+      - run: npm run build
+
+  deploy:
+    name: Выкладка в Firebase
+    needs: test
+    # Выкладываем только ветку по умолчанию (не pull request'ы и не другие ветки)
+    if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://plumit-buh.web.app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Проверка ключа
+        id: key
+        env:
+          KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::warning::Выкладка пропущена: не задан секрет FIREBASE_SERVICE_ACCOUNT (см. README, раздел «Автовыкладка»)"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            printf '%s' "$KEY" > "$RUNNER_TEMP/firebase-key.json"
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.key.outputs.ok == 'true'
+        run: npm ci
+      - if: steps.key.outputs.ok == 'true'
+        run: npm run build
+      - name: Деплой (сайт + правила Firestore)
+        if: steps.key.outputs.ok == 'true'
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-key.json
+        run: npx firebase deploy --only hosting,firestore:rules --non-interactive
+      - name: Удаление ключа
+        if: always()
+        run: rm -f "$RUNNER_TEMP/firebase-key.json"
