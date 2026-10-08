@@ -6,6 +6,7 @@ import { auth, configured, db } from './lib/firebase.js';
 import { DataProvider, useAuthUser, useData, useAccess } from './lib/store.jsx';
 import { memberStatement, membersWithBalance, projectsWithSummary } from './lib/finance.js';
 import { stableJson, writeStatements } from './lib/actions.js';
+import { setAuditData } from './lib/audit.js';
 import { Icon, Loading, ToastProvider } from './ui.jsx';
 import Login, { NoAccess, VerifyEmail } from './pages/Login.jsx';
 import Dashboard from './pages/Dashboard.jsx';
@@ -16,6 +17,8 @@ import Team from './pages/Team.jsx';
 import Member from './pages/Member.jsx';
 import Savings, { SavingsAccount } from './pages/Savings.jsx';
 import EmployeeShell from './pages/Employee.jsx';
+import Reports from './pages/Reports.jsx';
+import Journal from './pages/Journal.jsx';
 import Settings from './pages/Settings.jsx';
 import OperationForm from './components/OperationForm.jsx';
 import ThemeToggle from './components/ThemeToggle.jsx';
@@ -31,6 +34,8 @@ const NAV = [
   ['/operations', 'list', 'Операции', 'Операции'],
   ['/team', 'users', 'Команда', 'Команда'],
   ['/savings', 'wallet', 'Счета', null],
+  ['/reports', 'chart', 'Отчёты', null],
+  ['/journal', 'history', 'Журнал', null],
   ['/settings', 'settings', 'Настройки', 'Ещё'],
 ];
 
@@ -68,6 +73,7 @@ function Shell({ user, role }) {
   const members = useMemo(() => membersWithBalance(data), [data]);
   const projects = useMemo(() => projectsWithSummary(data), [data]);
   useStatementSync(data, isAdmin);
+  useEffect(() => setAuditData(data), [data]);
 
   // На странице проекта новая операция сразу привязывается к нему
   const currentProject = matchPath('/projects/:id', location.pathname)?.params.id;
@@ -118,6 +124,8 @@ function Shell({ user, role }) {
               <Route path="/team/:id" element={<Member />} />
               <Route path="/savings" element={<Savings />} />
               <Route path="/savings/:id" element={<SavingsAccount />} />
+              <Route path="/reports" element={<Reports />} />
+              <Route path="/journal" element={<Journal />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

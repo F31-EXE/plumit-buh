@@ -25,10 +25,19 @@ export default function Settings() {
         <div className="grow"><h1>Настройки</h1><div className="sub">{me.email} · {me.role === 'admin' ? 'администратор' : 'только просмотр'}</div></div>
       </div>
 
-      <Link to="/savings" className="card spread hide-desktop">
-        <div className="row"><span className="op-icon income"><Icon name="wallet" /></span><div><h2>Накопительные счета</h2><div className="faint small">Резерв студии под проценты</div></div></div>
-        <Icon name="right" width={20} />
-      </Link>
+      <div className="card flush hide-desktop">
+        <div className="list">
+          {[['/savings', 'wallet', 'Накопительные счета', 'Резерв студии под проценты'],
+            ['/reports', 'chart', 'Отчёты', 'По месяцам и проектам, выгрузка в Excel'],
+            ['/journal', 'history', 'Журнал изменений', 'Кто и что менял']].map(([to, icon, label, hint]) => (
+            <Link key={to} to={to} className="list-item">
+              <span className="op-icon"><Icon name={icon} /></span>
+              <div className="grow"><div style={{ fontWeight: 700 }}>{label}</div><div className="faint small">{hint}</div></div>
+              <Icon name="right" width={18} />
+            </Link>
+          ))}
+        </div>
+      </div>
 
       <div className="card stack">
         <h2>Оформление</h2>

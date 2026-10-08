@@ -167,6 +167,23 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Журнал изменений: пишет только администратор от своего имени и со временем сервера; править и удалять нельзя
+    match /audit/{doc} {
+      allow read: if canRead();
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(['at', 'at_ms', 'user', 'action', 'entity', 'entity_id', 'label', 'changes', 'snapshot'])
+        && request.resource.data.at == request.time
+        && request.resource.data.user == email()
+        && ms(request.resource.data.at_ms)
+        && request.resource.data.action in ['create', 'update', 'delete']
+        && request.resource.data.entity in ['operation', 'project', 'iteration', 'member', 'document', 'account', 'account_op', 'access', 'import', 'demo']
+        && text(request.resource.data.entity_id, 300)
+        && text(request.resource.data.label, 500)
+        && request.resource.data.changes is list && request.resource.data.changes.size() <= 100
+        && (request.resource.data.snapshot == null || request.resource.data.snapshot is map);
+      allow update, delete: if false;
+    }
+
     match /operations/{doc} {
       allow read: if canRead();
       allow create: if isAdmin() && validOperation(request.resource.data)

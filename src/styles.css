@@ -398,3 +398,6 @@ html.theme-fade, html.theme-fade * { transition: background-color .45s ease, col
 }
 
 .link { border: 0; background: none; padding: 0; color: var(--accent); font: inherit; font-weight: 700; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.changes { margin: 6px 0 0; padding-left: 16px; font-size: 13px; }
+.changes li { margin: 2px 0; overflow-wrap: anywhere; }
+.changes s { text-decoration-thickness: 1px; }

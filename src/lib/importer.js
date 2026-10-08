@@ -9,7 +9,7 @@
 // Суммы — в рублях. Ссылки между записями — через key.
 import { collection, doc, writeBatch } from 'firebase/firestore';
 import { db } from './firebase.js';
-import { buildOperation, kop } from './actions.js';
+import { buildOperation, kop, logAction } from './actions.js';
 
 const PROJECT_STATUSES = ['active', 'paused', 'done'];
 const ITERATION_STATUSES = ['planned', 'in_work', 'done', 'cancelled'];
@@ -130,4 +130,6 @@ export async function runImport(plan, createdBy) {
     for (const d of plan.docs.slice(i, i + 400)) batch.set(doc(db, d.col, real.get(d.id)), resolve(d.data));
     await batch.commit();
   }
+  const c = plan.counts;
+  await logAction('create', 'import', `Импорт: участников ${c.members}, проектов ${c.projects}, итераций ${c.iterations}, операций ${c.operations}`);
 }

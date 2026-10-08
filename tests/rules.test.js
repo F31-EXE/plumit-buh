@@ -2,7 +2,7 @@
 import { after, before, beforeEach, test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { assertFails, assertSucceeds, initializeTestEnvironment } from '@firebase/rules-unit-testing';
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
 
 let env;
 const admin = () => env.authenticatedContext('admin', { email: 'Boss@Plumit.ru', email_verified: true }).firestore();
@@ -129,4 +129,23 @@ test('накопительные счета', async () => {
   await assertFails(setDoc(doc(db, 'accounts/a2'), { name: 'X', bank: '', rate: 16, capitalization: 'weekly', opened: null, notes: '', archived: false }));
   await assertFails(addDoc(collection(viewer(), 'account_ops'), { account_id: 'a1', type: 'deposit', date: '2026-01-01', amount: 100, comment: '' }));
   await assertSucceeds(getDocs(collection(viewer(), 'accounts')));
+});
+
+test('журнал изменений: только администратор, от своего имени, со временем сервера, без правок', async () => {
+  const entry = (extra = {}) => ({ at: serverTimestamp(), at_ms: 1, user: 'boss@plumit.ru', action: 'update', entity: 'operation',
+    entity_id: 'o1', label: 'Поступление', changes: [{ field: 'amount', from: 1, to: 2 }], snapshot: null, ...extra });
+  const db = admin();
+  // изменение и запись в журнал одним батчем
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'operations/o1'), { amount: 200000 });
+  batch.set(doc(db, 'audit/a1'), entry());
+  await assertSucceeds(batch.commit());
+  await assertFails(setDoc(doc(db, 'audit/a2'), entry({ user: 'view@plumit.ru' })));          // чужое имя
+  await assertFails(setDoc(doc(db, 'audit/a3'), entry({ at: new Date('2020-01-01') })));      // своё время
+  await assertFails(setDoc(doc(db, 'audit/a4'), entry({ entity: 'secret' })));
+  await assertFails(setDoc(doc(viewer(), 'audit/a5'), entry({ user: 'view@plumit.ru' })));
+  await assertFails(updateDoc(doc(db, 'audit/a1'), { label: 'подмена' }));
+  await assertFails(deleteDoc(doc(db, 'audit/a1')));
+  await assertSucceeds(getDocs(collection(viewer(), 'audit')));
+  await assertFails(getDocs(collection(employee(), 'audit')));
 });

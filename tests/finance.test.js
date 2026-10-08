@@ -127,3 +127,56 @@ test('демо-данные: находятся только демо-проек
   assert.deepEqual(f.iterations.map((i) => i.id), ['i1']);
   assert.deepEqual(f.operations.map((o) => o.id), ['o1']);
 });
+
+test('отчёт за период: по месяцам, проектам, статьям и людям', async () => {
+  const { buildReport } = await import('../src/lib/report.js');
+  const r = buildReport(data, { from: '2026-05', to: '2026-06' });
+  assert.deepEqual(r.months, ['2026-05', '2026-06']);
+  assert.deepEqual(r.total, { income: 60000, payouts: 15000.5, expenses: 500, taxes: 2000, outflow: 17500.5, profit: 42499.5 });
+  assert.equal(r.byMonth[1].taxes, 2000);
+  assert.equal(r.byMonth[1].profit, -2000);
+  assert.equal(r.byProject.length, 1);
+  assert.deepEqual(r.byCategory.map((c) => [c.category, c.amount]), [['Налоги и взносы', 2000], ['Сервера', 500]]);
+  assert.deepEqual(r.byPerson, [{ member_id: 'b', name: 'Денис', paid: 15000.5, penalties: 1000 }]);
+  const june = buildReport(data, { from: '2026-06', to: '2026-06' });
+  assert.equal(june.total.income, 0);
+  assert.equal(june.operationsCount, 2); // налог и перевод
+});
+
+test('выгрузка в Excel: сводка, лист проекта с итерациями и сеткой по дням', async () => {
+  const ExcelJS = (await import('exceljs')).default;
+  const { buildReport, buildWorkbook } = await import('../src/lib/report.js');
+  const wb = buildWorkbook(ExcelJS, data, buildReport(data, { from: '2026-05', to: '2026-06' }));
+  const back = new ExcelJS.Workbook();
+  await back.xlsx.load(await wb.xlsx.writeBuffer());
+  assert.deepEqual(back.worksheets.map((w) => w.name), ['Сводка', 'P']);
+  const ws = back.getWorksheet('P');
+  const cells = [];
+  ws.eachRow((row) => cells.push(row.values.slice(1).map((v) => (v && typeof v === 'object' && 'formula' in v ? `=${v.formula}|${v.result}` : v))));
+  const find = (label) => cells.find((r) => r[0] === label);
+  assert.equal(find('Денис (Backend)')[3], 15000.5);          // выплачено всего
+  assert.equal(find('Стоимость проекта')[1], 100000);
+  assert.ok(cells.some((r) => r[0] === '1' && r[1] === 50000)); // итерация 1, стоимость
+  const may = cells.findIndex((r) => r[0] === 'Май 2026');
+  assert.deepEqual(cells[may + 1].slice(0, 3), ['Число', 'ВСЕГО', 1]);
+  const income = cells.slice(may).find((r) => r[0] === 'Поступления');
+  assert.match(String(income[1]), /^=SUM\(C\d+:AG\d+\)\|60000$/);  // в мае 31 день: колонки C..AG
+  assert.equal(income[2], 60000);                                  // 1 мая
+  assert.ok(cells.some((r) => r[0] === 'Журнал операций'));
+  const summary = [];
+  back.getWorksheet('Сводка').eachRow((row) => summary.push(row.values.slice(1)));
+  assert.ok(summary.some((r) => r[0] === 'Май 2026' && r[1] === 60000));
+});
+
+test('журнал: список изменившихся полей, доли — по людям', async () => {
+  const { diff } = await import('../src/lib/audit.js');
+  assert.deepEqual(diff(
+    { amount: 3000000, comment: '', created_ms: 1, shares: { a: 100, b: 200 }, member_ids: ['a'] },
+    { amount: 3500000, comment: '', created_ms: 2, shares: { a: 100, c: 50 }, member_ids: ['a', 'c'] },
+  ), [
+    { field: 'amount', from: 3000000, to: 3500000 },
+    { field: 'shares.b', from: 200, to: null },
+    { field: 'shares.c', from: null, to: 50 },
+    { field: 'member_ids', from: ['a'], to: ['a', 'c'] },
+  ]);
+});

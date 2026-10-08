@@ -1,6 +1,7 @@
 // Вымышленные демо-данные, чтобы посмотреть приложение в работе. Загружаются в пустую базу из «Настроек».
 import { collection, doc, writeBatch } from 'firebase/firestore';
 import { db } from './firebase.js';
+import { logAction } from './actions.js';
 
 export async function loadDemo(email) {
   const batch = writeBatch(db);
@@ -76,6 +77,7 @@ export async function loadDemo(email) {
   op(p2, '2026-05-20', 'penalty', 10000, { member_id: m.fe2, comment: 'Срыв срока' });
 
   await batch.commit();
+  await logAction('create', 'demo', 'Загружены демо-данные');
 }
 
 // ---------- Удаление демо-данных ----------
@@ -111,4 +113,5 @@ export async function removeDemo(found) {
     refs.slice(i, i + 400).forEach((r) => batch.delete(r));
     await batch.commit();
   }
+  await logAction('delete', 'demo', `Удалены демо-данные: ${[...found.projects.map((p) => p.name), ...found.members.map((m) => m.name)].join(', ')}`);
 }
