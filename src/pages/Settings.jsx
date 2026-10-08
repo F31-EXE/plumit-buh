@@ -20,12 +20,13 @@ export default function Settings() {
   return (
     <div className="stack" style={{ maxWidth: 720 }}>
       <div className="page-head" style={{ marginBottom: 0 }}>
-        <div><h1>Настройки</h1><div className="sub">{me.email} · {me.role === 'admin' ? 'администратор' : 'только просмотр'}</div></div>
+        <div className="grow"><h1>Настройки</h1><div className="sub">{me.email} · {me.role === 'admin' ? 'администратор' : 'только просмотр'}</div></div>
       </div>
 
       <div className="card stack">
         <h2>Оформление</h2>
-        <Segmented value={theme} onChange={(t) => setTheme(t)} options={[['auto', 'Как в системе'], ['light', 'Светлая'], ['dark', 'Тёмная']]} />
+        <Segmented className="fit" value={theme} onChange={(t) => setTheme(t)} options={[['auto', 'Авто'], ['light', 'Светлая'], ['dark', 'Тёмная']]} />
+        <div className="faint small">«Авто» — как в настройках телефона или компьютера.</div>
       </div>
 
       <div className="card stack">
@@ -38,7 +39,7 @@ export default function Settings() {
 
       <div className="card stack">
         <h2>Экспорт</h2>
-        <div><button type="button" className="btn" onClick={() => downloadCsv(listOperations(data))}><Icon name="download" />Все операции в CSV (открывается в Excel)</button></div>
+        <div><button type="button" className="btn wrap" onClick={() => downloadCsv(listOperations(data))}><Icon name="download" />Скачать все операции (CSV для Excel)</button></div>
       </div>
 
       {hasPassword && <PasswordForm />}
@@ -108,8 +109,9 @@ function Access() {
       <div>
         {list.map((u) => (
           <div key={u.email} className="spread" style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
-            <div className="grow ellipsis">
-              <strong>{u.name || u.email}</strong> <span className="faint small">· {u.name ? `${u.email} · ` : ''}{u.role === 'admin' ? 'администратор' : 'просмотр'}</span>
+            <div className="grow" style={{ overflowWrap: 'anywhere' }}>
+              <strong>{u.name || u.email}</strong>
+              <div className="faint small">{u.name ? `${u.email} · ` : ''}{u.role === 'admin' ? 'администратор' : 'просмотр'}</div>
             </div>
             {u.email !== emailKey(me.email) && <button type="button" className="btn sm ghost danger" onClick={() => remove(u)}>Удалить</button>}
           </div>

@@ -110,9 +110,9 @@ export function MonthPicker({ value, onChange }) {
   );
 }
 
-export function Segmented({ value, onChange, options }) {
+export function Segmented({ value, onChange, options, className = '' }) {
   return (
-    <div className="segmented" role="tablist">
+    <div className={`segmented ${className}`} role="tablist">
       {options.map(([v, label]) => (
         <button type="button" key={v} className={v === value ? 'on' : ''} onClick={() => onChange(v)} role="tab" aria-selected={v === value}>{label}</button>
       ))}
