@@ -104,3 +104,26 @@ test('импорт: проверка файла и связи между зап�
   assert.equal(proj.budget, 100000);
   assert.equal(proj.member_ids[0], 'existing-anna');
 });
+
+test('демо-данные: находятся только демо-проекты и незанятые демо-участники', async () => {
+  const { findDemo } = await import('../src/lib/demo.js');
+  const data = {
+    projects: [
+      { id: 'd1', name: 'Маркетплейс «Ягода»', client: 'ООО «Ягода»', member_ids: ['anna', 'oleg'] },
+      { id: 'real', name: 'CLOKWISE', client: '', member_ids: ['ilya'] },
+      { id: 'same-name', name: 'Платформа опросов', client: 'Настоящий клиент', member_ids: [] },
+    ],
+    members: [{ id: 'anna', name: 'Анна' }, { id: 'oleg', name: 'Олег' }, { id: 'ilya', name: 'Илья' }, { id: 'vera', name: 'Вера' }],
+    iterations: [
+      { id: 'i1', project_id: 'd1', shares: { anna: 100 } },
+      { id: 'i2', project_id: 'real', shares: { vera: 100 } }, // «Вера» участвует в настоящем проекте — не трогаем
+    ],
+    operations: [{ id: 'o1', project_id: 'd1', member_id: 'oleg' }, { id: 'o2', project_id: 'real', member_id: 'ilya' }],
+    documents: [],
+  };
+  const f = findDemo(data);
+  assert.deepEqual(f.projects.map((p) => p.id), ['d1']);
+  assert.deepEqual(f.members.map((m) => m.id), ['anna', 'oleg']);
+  assert.deepEqual(f.iterations.map((i) => i.id), ['i1']);
+  assert.deepEqual(f.operations.map((o) => o.id), ['o1']);
+});

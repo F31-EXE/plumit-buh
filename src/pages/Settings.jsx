@@ -6,7 +6,7 @@ import { emailKey } from '../lib/store.jsx';
 import { grantAccess, revokeAccess } from '../lib/actions.js';
 import { listOperations } from '../lib/finance.js';
 import { downloadCsv } from '../lib/csv.js';
-import { loadDemo } from '../lib/demo.js';
+import { findDemo, loadDemo, removeDemo } from '../lib/demo.js';
 import { planImport, runImport } from '../lib/importer.js';
 import { Link } from 'react-router-dom';
 import { useApp } from '../App.jsx';
@@ -53,6 +53,7 @@ export default function Settings() {
       {isAdmin && <Access />}
       {isAdmin && <Import />}
       {isAdmin && !data.projects.length && <Demo />}
+      {isAdmin && <DemoCleanup />}
 
       <div><button type="button" className="btn danger" onClick={logout}><Icon name="logout" />Выйти</button></div>
     </div>
@@ -221,6 +222,41 @@ function Import() {
         </div>
       )}
       <ErrorBox error={error} />
+    </div>
+  );
+}
+
+function DemoCleanup() {
+  const { data } = useApp();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const found = findDemo(data);
+  if (!found.projects.length && !found.members.length) return null;
+
+  async function run() {
+    const what = [...found.projects.map((p) => `проект «${p.name}»`), ...found.members.map((m) => m.name)].join(', ');
+    if (!confirm(`Удалить демо-данные: ${what}? Вместе с проектами удалятся их итерации и операции. Отменить нельзя.`)) return;
+    setBusy(true);
+    setError(null);
+    try { await removeDemo(found); toast('Демо-данные удалены'); } catch (err) { setError(err); }
+    setBusy(false);
+  }
+
+  return (
+    <div className="card stack">
+      <div>
+        <h2>Удалить демо-данные</h2>
+        <div className="faint small" style={{ marginTop: 4 }}>Ваши настоящие проекты и люди не затрагиваются.</div>
+      </div>
+      <div className="small muted">
+        {found.projects.length > 0 && (
+          <div>Проекты: <strong>{found.projects.map((p) => p.name).join(', ')}</strong> — с {found.iterations.length} итерациями и {found.operations.length} операциями</div>
+        )}
+        {found.members.length > 0 && <div>Участники: <strong>{found.members.map((m) => m.name).join(', ')}</strong></div>}
+      </div>
+      <ErrorBox error={error} />
+      <div><button type="button" className="btn danger wrap" onClick={run} disabled={busy}>{busy ? 'Удаляю…' : 'Удалить демо-данные'}</button></div>
     </div>
   );
 }

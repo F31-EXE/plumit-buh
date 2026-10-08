@@ -77,3 +77,38 @@ export async function loadDemo(email) {
 
   await batch.commit();
 }
+
+// ---------- Удаление демо-данных ----------
+// Демо-проекты узнаём по названию и клиенту вместе, демо-участников — по имени,
+// и только если у них нет ничего в настоящих данных (итераций, операций, документов, проектов).
+const DEMO_PROJECTS = [['Маркетплейс «Ягода»', 'ООО «Ягода»'], ['Платформа опросов', 'АО «Индекс»']];
+const DEMO_MEMBERS = ['Анна', 'Олег', 'Кирилл', 'Денис', 'Вера', 'Пётр'];
+
+export function findDemo(data) {
+  const projects = data.projects.filter((p) => DEMO_PROJECTS.some(([name, client]) => p.name === name && p.client === client));
+  const pids = new Set(projects.map((p) => p.id));
+  const usedElsewhere = (mid) => data.iterations.some((it) => !pids.has(it.project_id) && (it.shares?.[mid] || 0) > 0)
+    || data.operations.some((o) => !pids.has(o.project_id) && (o.member_id === mid || o.from_member_id === mid))
+    || data.documents.some((d) => d.member_id === mid)
+    || data.projects.some((p) => !pids.has(p.id) && p.member_ids?.includes(mid));
+  return {
+    projects,
+    members: data.members.filter((m) => DEMO_MEMBERS.includes(m.name) && !usedElsewhere(m.id)),
+    iterations: data.iterations.filter((it) => pids.has(it.project_id)),
+    operations: data.operations.filter((o) => o.project_id && pids.has(o.project_id)),
+  };
+}
+
+export async function removeDemo(found) {
+  const refs = [
+    ...found.operations.map((o) => doc(db, 'operations', o.id)),
+    ...found.iterations.map((it) => doc(db, 'iterations', it.id)),
+    ...found.projects.map((p) => doc(db, 'projects', p.id)),
+    ...found.members.map((m) => doc(db, 'members', m.id)),
+  ];
+  for (let i = 0; i < refs.length; i += 400) {
+    const batch = writeBatch(db);
+    refs.slice(i, i + 400).forEach((r) => batch.delete(r));
+    await batch.commit();
+  }
+}
