@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { deleteMember, saveMember } from '../lib/actions.js';
 import { useApp } from '../App.jsx';
 import { money } from '../format.js';
@@ -7,6 +8,7 @@ import { Avatar, Empty, ErrorBox, Field, Icon, Modal, useToast } from '../ui.jsx
 export default function Team() {
   const { members, isAdmin } = useApp();
   const [form, setForm] = useState(null);
+  const navigate = useNavigate();
   const totalDue = members.reduce((a, m) => a + m.balance.due, 0);
 
   return (
@@ -22,7 +24,7 @@ export default function Team() {
               <thead><tr><th>Участник</th><th className="num">Начислено</th><th className="num hide-mobile">Штрафы</th><th className="num hide-mobile">Выплачено</th><th className="num">Осталось</th></tr></thead>
               <tbody>
                 {members.map((m) => (
-                  <tr key={m.id} className={`${isAdmin ? 'clickable' : ''} ${m.active ? '' : 'dim'}`} onClick={() => isAdmin && setForm(m)}>
+                  <tr key={m.id} className={`clickable ${m.active ? '' : 'dim'}`} onClick={() => navigate(`/team/${m.id}`)}>
                     <td><div className="row"><Avatar name={m.name} id={m.id} /><div><strong>{m.name}</strong><div className="faint small">{m.role}{m.active ? '' : ' · неактивен'}</div></div></div></td>
                     <td className="num">{money(m.balance.accrued)}</td>
                     <td className="num hide-mobile">{m.balance.penalties ? `−${money(m.balance.penalties)}` : '—'}</td>
@@ -36,12 +38,12 @@ export default function Team() {
         ) : <Empty title="В команде пока никого">Добавьте PM, разработчиков и дизайнеров.</Empty>}
       </div>
       <p className="faint small">Начислено — сумма долей во всех итерациях (кроме отменённых). Отрицательный остаток — переплата.</p>
-      {form && <MemberForm member={form.id ? form : null} onClose={() => setForm(null)} onSaved={() => setForm(null)} />}
+      {form && <MemberForm member={null} onClose={() => setForm(null)} onSaved={() => setForm(null)} />}
     </div>
   );
 }
 
-function MemberForm({ member, onClose, onSaved }) {
+export function MemberForm({ member, onClose, onSaved }) {
   const { data } = useApp();
   const toast = useToast();
   const [f, setF] = useState({ name: member?.name || '', role: member?.role || '', active: member ? member.active : true });

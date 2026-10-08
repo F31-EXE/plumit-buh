@@ -168,3 +168,123 @@ export function dashboard(data, month) {
     series: series.map((ym) => ({ month: ym, income: R(byMonth.get(ym).income), outflow: R(byMonth.get(ym).outflow) })),
   };
 }
+
+// ---------- Выписка сотрудника ----------
+// То, что видит сам сотрудник: только его начисления, штрафы и выплаты. Суммы в копейках.
+export function memberStatement(data, memberId) {
+  const m = data.members.find((x) => x.id === memberId);
+  if (!m) return null;
+  const projects = new Map();
+  const proj = (pid) => {
+    if (!projects.has(pid)) {
+      const p = data.projects.find((x) => x.id === pid);
+      projects.set(pid, { project_id: pid, name: p?.name || 'Без проекта', status: p?.status || 'active', accrued: 0, penalties: 0, paid: 0, due: 0, items: [] });
+    }
+    return projects.get(pid);
+  };
+
+  for (const p of data.projects) if (p.member_ids?.includes(memberId)) proj(p.id);
+  const sorted = [...data.iterations].sort((a, b) => (a.sort || 0) - (b.sort || 0));
+  for (const it of sorted) {
+    const amount = it.shares?.[memberId] || 0;
+    if (!amount) continue;
+    const p = proj(it.project_id);
+    p.items.push({ title: it.title, status: it.status, date: it.date || null, amount });
+    if (it.status !== 'cancelled') p.accrued += amount;
+  }
+
+  const history = [];
+  for (const o of data.operations) {
+    const involved = o.member_id === memberId || o.from_member_id === memberId;
+    if (!involved || !['payout', 'penalty', 'transfer'].includes(o.type)) continue;
+    if (o.type === 'payout' && o.project_id) proj(o.project_id).paid += o.amount;
+    if (o.type === 'penalty' && o.project_id) proj(o.project_id).penalties += o.amount;
+    const other = o.type === 'transfer'
+      ? data.members.find((x) => x.id === (o.member_id === memberId ? o.from_member_id : o.member_id))?.name || ''
+      : '';
+    history.push({
+      date: o.date, type: o.type, amount: o.amount, comment: o.comment || '',
+      project: data.projects.find((x) => x.id === o.project_id)?.name || '',
+      direction: o.type === 'transfer' ? (o.member_id === memberId ? 'in' : 'out') : null, other,
+    });
+  }
+  history.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+
+  const list = [...projects.values()].map((p) => ({ ...p, due: p.accrued - p.penalties - p.paid }));
+  const sum = (k) => list.reduce((a, p) => a + p[k], 0);
+  return {
+    member_id: memberId,
+    name: m.name,
+    role: m.role || '',
+    totals: { accrued: sum('accrued'), penalties: sum('penalties'), paid: sum('paid'), due: sum('due') },
+    projects: list,
+    history,
+  };
+}
+
+// ---------- Накопительные счета ----------
+const DAY = 86400000;
+const toDay = (s) => Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10));
+const fromDay = (t) => new Date(t).toISOString().slice(0, 10);
+
+// Годовая доходность при ставке r% и капитализации
+export function effectiveYield(rate, capitalization) {
+  const r = Number(rate || 0) / 100;
+  if (capitalization === 'daily') return (1 + r / 365) ** 365 - 1;
+  if (capitalization === 'monthly') return (1 + r / 12) ** 12 - 1;
+  return r;
+}
+
+// Сводка по счёту: остаток, начисленные банком проценты, расчётные проценты с последнего начисления, прогноз.
+// ops — операции счёта: deposit / withdraw / interest (amount в копейках) и rate (новая ставка, % годовых).
+export function accountSummary(account, ops, today) {
+  const sorted = [...ops].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.created_ms || 0) - (b.created_ms || 0)));
+  let balance = 0;
+  let deposited = 0;
+  let withdrawn = 0;
+  let interest = 0;
+  let rate = Number(account.rate || 0);
+  let lastInterest = null;
+  for (const o of sorted) {
+    if (o.date > today) continue;
+    if (o.type === 'deposit') { balance += o.amount; deposited += o.amount; }
+    else if (o.type === 'withdraw') { balance -= o.amount; withdrawn += o.amount; }
+    else if (o.type === 'interest') { balance += o.amount; interest += o.amount; lastInterest = o.date; }
+    else if (o.type === 'rate') rate = Number(o.rate || 0);
+  }
+
+  // Расчётные проценты: по дням с последнего начисления банком (или с первого пополнения) до сегодня
+  const first = sorted.find((o) => o.type === 'deposit')?.date;
+  let accrued = 0;
+  if (first && first <= today) {
+    const start = lastInterest || first;
+    let bal = 0;
+    let r = Number(account.rate || 0);
+    let i = 0;
+    for (let t = toDay(start); t < toDay(today); t += DAY) {
+      const d = fromDay(t);
+      while (i < sorted.length && sorted[i].date <= d) {
+        const o = sorted[i++];
+        if (o.type === 'deposit' || o.type === 'interest') bal += o.amount;
+        else if (o.type === 'withdraw') bal -= o.amount;
+        else if (o.type === 'rate') r = Number(o.rate || 0);
+      }
+      // До даты start операции уже учтены в bal — накапливаем только с неё
+      accrued += (bal * r) / 100 / 365;
+    }
+  }
+
+  const R = (k) => Math.round(k) / 100;
+  return {
+    balance: R(balance),
+    deposited: R(deposited),
+    withdrawn: R(withdrawn),
+    interest: R(interest),
+    rate,
+    lastInterest,
+    accrued: R(accrued),
+    monthForecast: R((balance * rate) / 100 / 12),
+    yearForecast: R(balance * effectiveYield(rate, account.capitalization)),
+    effectiveYield: Math.round(effectiveYield(rate, account.capitalization) * 10000) / 100,
+  };
+}

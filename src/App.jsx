@@ -1,9 +1,11 @@
-import { createContext, useContext, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { NavLink, Navigate, Route, Routes, matchPath, useLocation } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
-import { auth, configured } from './lib/firebase.js';
-import { DataProvider, useAuthUser, useData, useRole } from './lib/store.jsx';
-import { membersWithBalance, projectsWithSummary } from './lib/finance.js';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { auth, configured, db } from './lib/firebase.js';
+import { DataProvider, useAuthUser, useData, useAccess } from './lib/store.jsx';
+import { memberStatement, membersWithBalance, projectsWithSummary } from './lib/finance.js';
+import { stableJson, writeStatements } from './lib/actions.js';
 import { Icon, Loading, ToastProvider } from './ui.jsx';
 import Login, { NoAccess, VerifyEmail } from './pages/Login.jsx';
 import Dashboard from './pages/Dashboard.jsx';
@@ -11,6 +13,9 @@ import Projects from './pages/Projects.jsx';
 import Project from './pages/Project.jsx';
 import Operations from './pages/Operations.jsx';
 import Team from './pages/Team.jsx';
+import Member from './pages/Member.jsx';
+import Savings, { SavingsAccount } from './pages/Savings.jsx';
+import EmployeeShell from './pages/Employee.jsx';
 import Settings from './pages/Settings.jsx';
 import OperationForm from './components/OperationForm.jsx';
 import ThemeToggle from './components/ThemeToggle.jsx';
@@ -19,11 +24,13 @@ import { Brand, EasterEggProvider, Logo } from './components/Brand.jsx';
 const AppCtx = createContext(null);
 export const useApp = () => useContext(AppCtx);
 
+// [путь, иконка, подпись в меню, подпись в нижней панели (null — только в боковом меню; на телефоне — через «Ещё»)]
 const NAV = [
   ['/', 'home', 'Сводка', 'Главная'],
   ['/projects', 'folder', 'Проекты', 'Проекты'],
   ['/operations', 'list', 'Операции', 'Операции'],
   ['/team', 'users', 'Команда', 'Команда'],
+  ['/savings', 'wallet', 'Счета', null],
   ['/settings', 'settings', 'Настройки', 'Ещё'],
 ];
 
@@ -38,15 +45,16 @@ export default function App() {
 
 function Gate() {
   const user = useAuthUser();
-  const role = useRole(user);
+  const access = useAccess(user);
   if (user === undefined) return <Loading />;
   if (!user) return <Login />;
   if (!user.emailVerified) return <VerifyEmail user={user} />;
-  if (role === undefined) return <Loading />;
-  if (!role) return <NoAccess user={user} />;
+  if (access === undefined) return <Loading />;
+  if (!access) return <NoAccess user={user} />;
+  if (access.role === 'employee') return <EmployeeShell user={user} memberId={access.member_id} />;
   return (
     <DataProvider>
-      <Shell user={user} role={role} />
+      <Shell user={user} role={access.role} />
     </DataProvider>
   );
 }
@@ -59,6 +67,7 @@ function Shell({ user, role }) {
 
   const members = useMemo(() => membersWithBalance(data), [data]);
   const projects = useMemo(() => projectsWithSummary(data), [data]);
+  useStatementSync(data, isAdmin);
 
   // На странице проекта новая операция сразу привязывается к нему
   const currentProject = matchPath('/projects/:id', location.pathname)?.params.id;
@@ -106,6 +115,9 @@ function Shell({ user, role }) {
               <Route path="/projects/:id" element={<Project />} />
               <Route path="/operations" element={<Operations />} />
               <Route path="/team" element={<Team />} />
+              <Route path="/team/:id" element={<Member />} />
+              <Route path="/savings" element={<Savings />} />
+              <Route path="/savings/:id" element={<SavingsAccount />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
@@ -113,7 +125,7 @@ function Shell({ user, role }) {
         </main>
 
         <nav className="tabbar">
-          {NAV.map(([to, icon, , short]) => (
+          {NAV.filter((n) => n[3]).map(([to, icon, , short]) => (
             <NavLink key={to} to={to} end={to === '/'}><Icon name={icon} />{short}</NavLink>
           ))}
         </nav>
@@ -125,6 +137,26 @@ function Shell({ user, role }) {
       {opForm && <OperationForm initial={opForm} onClose={() => setOpForm(null)} onSaved={() => setOpForm(null)} />}
     </AppCtx.Provider>
   );
+}
+
+// Выписки сотрудников (statements/{memberId}) держим актуальными: приложение администратора
+// пересчитывает их после каждого изменения данных и записывает только изменившиеся.
+function useStatementSync(data, enabled) {
+  const [existing, setExisting] = useState(null);
+  useEffect(() => {
+    if (!enabled) return undefined;
+    return onSnapshot(collection(db, 'statements'), (snap) => {
+      setExisting(new Map(snap.docs.map((d) => [d.id, stableJson(d.data())])));
+    }, () => {});
+  }, [enabled]);
+  useEffect(() => {
+    if (!enabled || !existing || !data.ready) return undefined;
+    const t = setTimeout(() => {
+      const desired = new Map(data.members.map((m) => [m.id, memberStatement(data, m.id)]));
+      writeStatements(desired, existing);
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [data, existing, enabled]);
 }
 
 function NotConfigured() {

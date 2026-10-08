@@ -3,7 +3,7 @@ import {
   collection, deleteDoc, doc, getDocs, query, setDoc, updateDoc, where, writeBatch,
 } from 'firebase/firestore';
 import { db } from './firebase.js';
-import { emailKey } from './store.jsx';
+import { emailKey } from './util.js';
 
 export const OP_TYPES = ['income', 'payout', 'expense', 'tax', 'penalty', 'transfer'];
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -70,8 +70,9 @@ export function saveMember(id, f) {
 }
 export function deleteMember(id, data) {
   const used = data.operations.some((o) => o.member_id === id || o.from_member_id === id)
-    || data.iterations.some((it) => (it.shares?.[id] || 0) > 0);
-  if (used) fail('У участника есть начисления или операции — его можно только сделать неактивным');
+    || data.iterations.some((it) => (it.shares?.[id] || 0) > 0)
+    || data.documents.some((d) => d.member_id === id);
+  if (used) fail('У участника есть начисления, операции или документы — его можно только сделать неактивным');
   const batch = writeBatch(db);
   for (const p of data.projects) {
     if (p.member_ids?.includes(id)) batch.update(doc(db, 'projects', p.id), { member_ids: p.member_ids.filter((x) => x !== id) });
@@ -143,9 +144,105 @@ export function saveIteration(id, projectId, f, nextSort) {
 export const deleteIteration = (id) => { fire(deleteDoc(doc(db, 'iterations', id))); };
 
 // ---------- Доступ ----------
-export function grantAccess(email, role, name) {
+export function grantAccess(email, role, name, memberId) {
   const key = emailKey(email);
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(key)) fail('Введите корректный email');
-  fire(setDoc(doc(db, 'access', key), { role: role === 'admin' ? 'admin' : 'viewer', name: str(name, 100), added_ms: Date.now() }));
+  const r = ['admin', 'viewer', 'employee'].includes(role) ? role : 'viewer';
+  const data = { role: r, name: str(name, 100), added_ms: Date.now() };
+  if (r === 'employee') {
+    if (!memberId) fail('Выберите, какой участник команды — этот сотрудник');
+    data.member_id = String(memberId);
+  }
+  fire(setDoc(doc(db, 'access', key), data));
 }
 export const revokeAccess = (email) => { fire(deleteDoc(doc(db, 'access', emailKey(email)))); };
+
+// ---------- Документы сотрудников (ссылки на файлы) ----------
+export const DOC_KINDS = { contract: 'Договор', act: 'Акт', nda: 'NDA', invoice: 'Счёт', other: 'Другое' };
+export function saveDocument(id, f) {
+  const title = str(f.title, 300);
+  if (!title) fail('Укажите название документа');
+  const url = str(f.url, 2000);
+  if (!/^https:\/\/\S+$/.test(url)) fail('Ссылка должна начинаться с https:// — например, на Google Диск или Яндекс Диск');
+  if (!ref(f.member_id)) fail('Выберите сотрудника');
+  const data = {
+    member_id: String(f.member_id),
+    title,
+    kind: DOC_KINDS[f.kind] ? f.kind : 'other',
+    url,
+    date: optDate(f.date),
+    notes: str(f.notes, 2000),
+  };
+  fire(id ? updateDoc(doc(db, 'documents', id), data) : setDoc(newRef('documents'), { ...data, created_ms: Date.now() }));
+}
+export const deleteDocument = (id) => { fire(deleteDoc(doc(db, 'documents', id))); };
+
+// ---------- Накопительные счета ----------
+export const CAPITALIZATION = { monthly: 'Ежемесячная', daily: 'Ежедневная', none: 'Без капитализации' };
+function rateValue(v) {
+  const n = Number(String(v ?? '').replace(',', '.'));
+  if (!Number.isFinite(n) || n < 0 || n > 100) fail('Ставка — число от 0 до 100 (% годовых)');
+  return Math.round(n * 100) / 100;
+}
+export function saveAccount(id, f) {
+  const name = str(f.name, 200);
+  if (!name) fail('Укажите название счёта');
+  const data = {
+    name,
+    bank: str(f.bank, 200),
+    rate: rateValue(f.rate),
+    capitalization: CAPITALIZATION[f.capitalization] ? f.capitalization : 'monthly',
+    opened: optDate(f.opened),
+    notes: str(f.notes, 2000),
+    archived: !!f.archived,
+  };
+  if (id) { fire(updateDoc(doc(db, 'accounts', id), data)); return id; }
+  const r = newRef('accounts');
+  fire(setDoc(r, { ...data, created_ms: Date.now() }));
+  return r.id;
+}
+export async function deleteAccount(id) {
+  const snap = await getDocs(query(collection(db, 'account_ops'), where('account_id', '==', id)));
+  for (let i = 0; i < snap.docs.length; i += 400) {
+    const batch = writeBatch(db);
+    snap.docs.slice(i, i + 400).forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+  }
+  await deleteDoc(doc(db, 'accounts', id));
+}
+
+export const ACCOUNT_OPS = { deposit: 'Пополнение', withdraw: 'Снятие', interest: 'Проценты от банка', rate: 'Новая ставка' };
+export function saveAccountOp(id, f) {
+  if (!ACCOUNT_OPS[f.type]) fail('Выберите тип');
+  if (!DATE_RE.test(f.date || '')) fail('Укажите дату');
+  const data = { account_id: String(f.account_id), type: f.type, date: f.date, comment: str(f.comment, 1000) };
+  if (f.type === 'rate') data.rate = rateValue(f.rate);
+  else {
+    data.amount = kop(f.amount);
+    if (data.amount <= 0) fail('Сумма должна быть больше нуля');
+  }
+  fire(id ? setDoc(doc(db, 'account_ops', id), { ...data, created_ms: f.created_ms || Date.now() })
+    : setDoc(newRef('account_ops'), { ...data, created_ms: Date.now() }));
+}
+export const deleteAccountOp = (id) => { fire(deleteDoc(doc(db, 'account_ops', id))); };
+
+// ---------- Выписки сотрудников ----------
+// Канонический JSON (ключи по алфавиту) — чтобы сравнивать с тем, что вернул Firestore
+export function stableJson(v) {
+  if (Array.isArray(v)) return `[${v.map(stableJson).join(',')}]`;
+  if (v && typeof v === 'object') return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${stableJson(v[k])}`).join(',')}}`;
+  return JSON.stringify(v ?? null);
+}
+// Записывает только изменившиеся выписки и удаляет выписки удалённых участников
+export function writeStatements(desired, existing) {
+  const batch = writeBatch(db);
+  let n = 0;
+  for (const [mid, st] of desired) {
+    if (existing.get(mid) !== stableJson(st)) { batch.set(doc(db, 'statements', mid), st); n++; }
+  }
+  for (const mid of existing.keys()) {
+    if (!desired.has(mid)) { batch.delete(doc(db, 'statements', mid)); n++; }
+  }
+  if (n) fire(batch.commit());
+  return n;
+}
