@@ -15,15 +15,21 @@
   },
   "dependencies": {
     "exceljs": "^4.4.0",
-    "firebase": "^11.10.0",
+    "firebase": "^13.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.30.6"
+    "react-router-dom": "^7.18.4"
   },
   "devDependencies": {
-    "@firebase/rules-unit-testing": "^4.0.1",
+    "@firebase/rules-unit-testing": "^6.0.0",
     "@vitejs/plugin-react": "^4.7.0",
     "firebase-tools": "^15.32.1",
     "vite": "^5.4.21"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "^1.14.5",
+    "exceljs": {
+      "uuid": "^11.1.1"
+    }
   }
 }

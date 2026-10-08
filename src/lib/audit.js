@@ -3,7 +3,7 @@ import { collection, doc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from './firebase.js';
 import { emailKey } from './util.js';
 
-// Актуальные данные — чтобы подписать запись именами («Выплата · Роман · CLOKWISE»).
+// Актуальные данные — чтобы подписать запись именами («Выплата · Анна · Проект»).
 // Подпись сохраняется в журнале и остаётся понятной, даже если проект или человека потом удалят.
 let current = null;
 export function setAuditData(data) { current = data; }

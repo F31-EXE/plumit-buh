@@ -110,7 +110,7 @@ test('демо-данные: находятся только демо-проек
   const data = {
     projects: [
       { id: 'd1', name: 'Маркетплейс «Ягода»', client: 'ООО «Ягода»', member_ids: ['anna', 'oleg'] },
-      { id: 'real', name: 'CLOKWISE', client: '', member_ids: ['ilya'] },
+      { id: 'real', name: 'Настоящий проект', client: '', member_ids: ['ilya'] },
       { id: 'same-name', name: 'Платформа опросов', client: 'Настоящий клиент', member_ids: [] },
     ],
     members: [{ id: 'anna', name: 'Анна' }, { id: 'oleg', name: 'Олег' }, { id: 'ilya', name: 'Илья' }, { id: 'vera', name: 'Вера' }],
@@ -179,4 +179,12 @@ test('журнал: список изменившихся полей, доли �
     { field: 'shares.c', from: null, to: 50 },
     { field: 'member_ids', from: ['a'], to: ['a', 'c'] },
   ]);
+});
+
+test('CSV: значения-формулы экранируются (защита от CSV injection)', async () => {
+  const { csvContent } = await import('../src/lib/csv.js');
+  const text = csvContent([{ date: '2026-01-01', type: 'expense', amount: 10, comment: '=HYPERLINK("http://evil","x")', category: '+cmd', project_name: '-1', member_name: '@x' }]);
+  assert.ok(text.includes(`"'=HYPERLINK(""http://evil"",""x"")"`));
+  assert.ok(text.includes(`"'+cmd"`) && text.includes(`"'-1"`) && text.includes(`"'@x"`));
+  assert.ok(text.includes('"10"'));
 });

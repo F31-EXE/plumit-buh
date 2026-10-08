@@ -1,8 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { NavLink, Navigate, Route, Routes, matchPath, useLocation } from 'react-router-dom';
-import { signOut } from 'firebase/auth';
 import { collection, onSnapshot } from 'firebase/firestore';
-import { auth, configured, db } from './lib/firebase.js';
+import { configured, db, logout } from './lib/firebase.js';
 import { DataProvider, useAuthUser, useData, useAccess } from './lib/store.jsx';
 import { memberStatement, membersWithBalance, projectsWithSummary } from './lib/finance.js';
 import { stableJson, writeStatements } from './lib/actions.js';
@@ -86,7 +85,7 @@ function Shell({ user, role }) {
     members,
     projects,
     openOperation: (preset = {}) => isAdmin && setOpForm(preset),
-    logout: () => signOut(auth),
+    logout,
   };
 
   return (

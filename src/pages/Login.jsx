@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import {
   GoogleAuthProvider, createUserWithEmailAndPassword, getRedirectResult, sendEmailVerification, sendPasswordResetEmail,
-  signInWithEmailAndPassword, signInWithPopup, signInWithRedirect, signOut,
+  signInWithEmailAndPassword, signInWithPopup, signInWithRedirect,
 } from 'firebase/auth';
-import { auth } from '../lib/firebase.js';
+import { auth, logout } from '../lib/firebase.js';
 import { ErrorBox, Field, Segmented } from '../ui.jsx';
 import { Brand } from '../components/Brand.jsx';
 import ThemeToggle from '../components/ThemeToggle.jsx';
@@ -160,7 +160,7 @@ export function VerifyEmail({ user }) {
         <button type="button" className="btn primary" onClick={check}>Я подтвердил</button>
         <div className="row">
           <button type="button" className="btn ghost sm" onClick={resend}>Отправить ещё раз</button>
-          <button type="button" className="btn ghost sm" onClick={() => signOut(auth)}>Выйти</button>
+          <button type="button" className="btn ghost sm" onClick={logout}>Выйти</button>
         </div>
       </div>
     </div>
@@ -178,7 +178,7 @@ export function NoAccess({ user }) {
           Вы вошли как <strong>{user.email}</strong>. Попросите администратора добавить этот email в разделе «Настройки → Доступ».
           Страница обновится сама.
         </p>
-        <button type="button" className="btn" onClick={() => signOut(auth)}>Войти под другим аккаунтом</button>
+        <button type="button" className="btn" onClick={logout}>Войти под другим аккаунтом</button>
       </div>
     </div>
   );

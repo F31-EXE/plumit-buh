@@ -1,6 +1,5 @@
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
-import { signOut } from 'firebase/auth';
-import { auth } from '../lib/firebase.js';
+import { logout } from '../lib/firebase.js';
 import { useEmployeeData } from '../lib/store.jsx';
 import { useTheme } from '../lib/theme.js';
 import { OP_TYPES, dateLabel, money } from '../format.js';
@@ -113,7 +112,7 @@ function MySettings({ user }) {
         <Segmented className="fit" value={theme} onChange={(t) => setTheme(t)} options={[['auto', 'Авто'], ['light', 'Светлая'], ['dark', 'Тёмная']]} />
       </div>
       {hasPassword && <PasswordForm />}
-      <div><button type="button" className="btn danger" onClick={() => signOut(auth)}><Icon name="logout" />Выйти</button></div>
+      <div><button type="button" className="btn danger" onClick={logout}><Icon name="logout" />Выйти</button></div>
     </div>
   );
 }

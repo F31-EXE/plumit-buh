@@ -1,7 +1,8 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, connectAuthEmulator } from 'firebase/auth';
+import { getAuth, connectAuthEmulator, signOut } from 'firebase/auth';
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager, connectFirestoreEmulator,
+  terminate, clearIndexedDbPersistence,
 } from 'firebase/firestore';
 
 // Конфигурация веб-приложения Firebase (Консоль → Настройки проекта → Ваши приложения).
@@ -28,4 +29,15 @@ export const db = app
 if (app && env.VITE_USE_EMULATORS === '1') {
   connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
   connectFirestoreEmulator(db, '127.0.0.1', 8080);
+}
+
+// Выход: кроме сессии стираем локальную копию данных (офлайн-кэш Firestore в IndexedDB),
+// чтобы на общем компьютере после выхода ничего не оставалось.
+export async function logout() {
+  try { await signOut(auth); } catch { /* уже вышли */ }
+  try {
+    await terminate(db);
+    await clearIndexedDbPersistence(db);
+  } catch { /* кэш занят другой вкладкой — очистится при следующем выходе */ }
+  window.location.replace('/');
 }
