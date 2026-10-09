@@ -12,12 +12,24 @@ gcloud config set project "$PROJECT_ID" >/dev/null
 PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
 step() { echo; echo "▶ $*"; }
 
-step "Проверяю, что хранилище создано"
-if ! gcloud storage buckets describe "gs://${BUCKET}" >/dev/null 2>&1; then
-  echo "✖ Хранилище gs://${BUCKET} не найдено."
-  echo "  Откройте https://console.firebase.google.com/project/${PROJECT_ID}/storage → «Начать» (нужен тариф Blaze) и запустите скрипт снова."
-  exit 1
+step "Ищу хранилище проекта"
+BUCKETS="$(gcloud storage buckets list --project="$PROJECT_ID" --format='value(name)' 2>/dev/null || true)"
+if ! echo "$BUCKETS" | grep -qx "$BUCKET"; then
+  # У части проектов хранилище по умолчанию называется <проект>.appspot.com
+  if echo "$BUCKETS" | grep -qx "${PROJECT_ID}.appspot.com"; then
+    BUCKET="${PROJECT_ID}.appspot.com"
+    echo "⚠ Хранилище называется gs://${BUCKET} — сообщите это разработчику: в приложении нужно поменять VITE_FIREBASE_STORAGE_BUCKET."
+  else
+    echo "✖ Хранилище не найдено. Сейчас в проекте: ${BUCKETS:-(нет ни одного)}"
+    echo
+    echo "  1) Проверьте тариф: https://console.firebase.google.com/project/${PROJECT_ID}/usage/details — должно быть «Blaze»."
+    echo "  2) Откройте https://console.firebase.google.com/project/${PROJECT_ID}/storage → «Get started» / «Начать»,"
+    echo "     выберите «Production mode» и регион в Европе → «Done». Дождитесь, пока откроется вкладка «Files»."
+    echo "  3) Запустите этот скрипт снова."
+    exit 1
+  fi
 fi
+echo "✔ gs://${BUCKET}"
 
 step "Разрешаю правилам хранилища читать таблицу доступа (access) из Firestore"
 gcloud services enable firebasestorage.googleapis.com firebaserules.googleapis.com >/dev/null
