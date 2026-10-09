@@ -213,7 +213,7 @@ export function deleteIteration(id) {
 export function grantAccess(email, role, name, memberId, projectIds) {
   const key = emailKey(email);
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(key)) fail('Введите корректный email');
-  const r = ['admin', 'viewer', 'employee'].includes(role) ? role : 'viewer';
+  const r = ['admin', 'viewer', 'employee', 'client'].includes(role) ? role : 'viewer';
   const data = { role: r, name: str(name, 100), added_ms: Date.now() };
   if (r === 'employee') {
     if (!memberId) fail('Выберите, какой участник команды — этот сотрудник');
