@@ -99,7 +99,7 @@ export default function OperationForm({ initial, onClose, onSaved }) {
           <Field label={NEEDS_PROJECT.includes(f.type) ? 'Проект' : 'Проект (необязательно)'}>
             <select className="input" value={f.project_id ?? ''} onChange={set('project_id')} required={NEEDS_PROJECT.includes(f.type)}>
               <option value="">— Общие (без проекта) —</option>
-              {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {projects.filter((p) => !p.archived || p.id === f.project_id).map((p) => <option key={p.id} value={p.id}>{p.name}{p.archived ? ' (архив)' : ''}</option>)}
             </select>
           </Field>
 

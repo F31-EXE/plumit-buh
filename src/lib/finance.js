@@ -138,7 +138,7 @@ export function categories(data) {
 }
 
 export function dashboard(data, month) {
-  const projects = [...data.projects].sort(sortProjects).map((p) => {
+  const projects = [...data.projects].filter((p) => !p.archived).sort(sortProjects).map((p) => {
     const s = projectSummary(data, p);
     return { id: p.id, name: p.name, client: p.client, status: p.status, budget: s.budget, income: s.income, cash: s.cash, receivable: s.receivable, teamDue: s.teamDue, profitPlan: s.profitPlan };
   });
@@ -171,9 +171,11 @@ export function dashboard(data, month) {
 
 // ---------- Выписка сотрудника ----------
 // То, что видит сам сотрудник: только его начисления, штрафы и выплаты. Суммы в копейках.
-export function memberStatement(data, memberId) {
+export function memberStatement(data, memberId, { includeArchived = false } = {}) {
   const m = data.members.find((x) => x.id === memberId);
   if (!m) return null;
+  // Архивные проекты видит только администратор — в выписку сотрудника они не попадают
+  const archived = new Set(includeArchived ? [] : data.projects.filter((p) => p.archived).map((p) => p.id));
   const projects = new Map();
   const proj = (pid) => {
     if (!projects.has(pid)) {
@@ -183,11 +185,11 @@ export function memberStatement(data, memberId) {
     return projects.get(pid);
   };
 
-  for (const p of data.projects) if (p.member_ids?.includes(memberId)) proj(p.id);
+  for (const p of data.projects) if (p.member_ids?.includes(memberId) && !archived.has(p.id)) proj(p.id);
   const sorted = [...data.iterations].sort((a, b) => (a.sort || 0) - (b.sort || 0));
   for (const it of sorted) {
     const amount = it.shares?.[memberId] || 0;
-    if (!amount) continue;
+    if (!amount || archived.has(it.project_id)) continue;
     const p = proj(it.project_id);
     p.items.push({ title: it.title, status: it.status, date: it.date || null, amount });
     if (it.status !== 'cancelled') p.accrued += amount;
@@ -196,7 +198,7 @@ export function memberStatement(data, memberId) {
   const history = [];
   for (const o of data.operations) {
     const involved = o.member_id === memberId || o.from_member_id === memberId;
-    if (!involved || !['payout', 'penalty', 'transfer'].includes(o.type)) continue;
+    if (!involved || !['payout', 'penalty', 'transfer'].includes(o.type) || archived.has(o.project_id)) continue;
     if (o.type === 'payout' && o.project_id) proj(o.project_id).paid += o.amount;
     if (o.type === 'penalty' && o.project_id) proj(o.project_id).penalties += o.amount;
     const other = o.type === 'transfer'
@@ -294,7 +296,7 @@ export function accountSummary(account, ops, today) {
 // Без долей команды, выплат, расходов, налогов и внутренних комментариев. Суммы в копейках.
 export function clientView(data, projectId) {
   const p = data.projects.find((x) => x.id === projectId);
-  if (!p) return null;
+  if (!p || p.archived) return null; // архивный проект заказчику не показываем
   const items = data.iterations
     .filter((it) => it.project_id === projectId && it.status !== 'cancelled')
     .sort((a, b) => (a.sort || 0) - (b.sort || 0) || (a.created_ms || 0) - (b.created_ms || 0))

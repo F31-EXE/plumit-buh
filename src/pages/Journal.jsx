@@ -113,7 +113,7 @@ export default function Journal() {
                         <ul className="changes">
                           {r.changes.map((c, i) => (
                             <li key={i}>
-                              <span className="faint">{c.field.startsWith('shares.') ? `Доля: ${memberName(c.field.slice(7)) || 'удалён'}` : FIELDS[c.field] || c.field}:</span>{' '}
+                              <span className="faint">{c.field.startsWith('shares.') ? `Доля: ${memberName(c.field.slice(7)) || 'удалён'}` : c.field === 'archived' && r.entity === 'project' ? 'В архиве' : FIELDS[c.field] || c.field}:</span>{' '}
                               <s className="faint">{fmt(r.entity, c.field, c.from)}</s> → <strong>{fmt(r.entity, c.field, c.to)}</strong>
                             </li>
                           ))}

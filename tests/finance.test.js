@@ -203,3 +203,16 @@ test('кабинет заказчика: пункты, оплаты и сумм�
   const json = JSON.stringify(v);
   for (const secret of ['shares', 'Денис', 'Анна', 'Сервера', 'payout', 'member']) assert.equal(json.includes(secret), false, secret);
 });
+
+test('архив: проект пропадает из выписки сотрудника, кабинета заказчика и сводки', async () => {
+  const { clientView, memberStatement, dashboard } = await import('../src/lib/finance.js');
+  const archived = { ...data, projects: data.projects.map((p) => ({ ...p, archived: true })) };
+  assert.equal(clientView(archived, 'p'), null);
+  const st = memberStatement(archived, 'b');
+  assert.equal(st.projects.length, 0);
+  assert.deepEqual(st.totals, { accrued: 0, penalties: 0, paid: 0, due: 0 });
+  assert.equal(st.history.filter((h) => h.project).length, 0);
+  const d = dashboard(archived, '2026-05');
+  assert.equal(d.projects.length, 0);
+  assert.equal(d.total.income, 60000); // деньги остаются в итогах — это реальные движения
+});

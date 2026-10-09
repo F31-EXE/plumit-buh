@@ -135,8 +135,24 @@ export function saveProject(id, f) {
     return id;
   }
   const r = newRef('projects');
-  commit((b) => b.set(r, { ...data, created_ms: Date.now() }), [['create', 'project', r.id, { after: data }]]);
+  commit((b) => b.set(r, { ...data, archived: false, created_ms: Date.now() }), [['create', 'project', r.id, { after: data }]]);
   return withId(r);
+}
+
+// Архив: проект видит только администратор (у заказчика и сотрудника он пропадает)
+export function setProjectArchived(id, archived) {
+  const before = find('projects', id);
+  commit((b) => b.update(doc(db, 'projects', id), { archived: !!archived }),
+    [['update', 'project', id, { before, after: { ...before, archived: !!archived } }]]);
+}
+
+// Разовая миграция: у старых проектов нет поля archived — без него наблюдатель их не увидит
+export function ensureArchivedField(projects) {
+  const missing = projects.filter((p) => typeof p.archived !== 'boolean');
+  if (!missing.length) return;
+  const batch = writeBatch(db);
+  missing.slice(0, 400).forEach((p) => batch.update(doc(db, 'projects', p.id), { archived: false }));
+  fire(batch.commit());
 }
 
 // Удаляет проект вместе с итерациями и операциями (пачками по 400 — лимит батча 500)

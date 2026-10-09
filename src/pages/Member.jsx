@@ -19,7 +19,7 @@ export default function Member() {
   const [docForm, setDocForm] = useState(null);
   const [edit, setEdit] = useState(false);
   const member = data.members.find((m) => m.id === id);
-  const st = useMemo(() => memberStatement(data, id), [data, id]);
+  const st = useMemo(() => memberStatement(data, id, { includeArchived: true }), [data, id]);
   const documents = data.documents.filter((d) => d.member_id === id);
 
   if (!member || !st) return <Empty title="Участник не найден"><Link to="/team" className="btn sm" style={{ marginTop: 10 }}>К команде</Link></Empty>;

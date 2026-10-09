@@ -4,7 +4,7 @@ import { collection, onSnapshot } from 'firebase/firestore';
 import { configured, db, logout } from './lib/firebase.js';
 import { DataProvider, useAuthUser, useData, useAccess } from './lib/store.jsx';
 import { clientView, memberStatement, membersWithBalance, projectsWithSummary } from './lib/finance.js';
-import { stableJson, writeViews } from './lib/actions.js';
+import { ensureArchivedField, stableJson, writeViews } from './lib/actions.js';
 import { setAuditData } from './lib/audit.js';
 import { Icon, Loading, ToastProvider } from './ui.jsx';
 import Login, { NoAccess, VerifyEmail } from './pages/Login.jsx';
@@ -55,7 +55,7 @@ function Gate() {
   if (access.role === 'employee') return <EmployeeShell user={user} memberId={access.member_id} />;
   if (access.role === 'client') return <ClientShell user={user} projectIds={access.project_ids} />;
   return (
-    <DataProvider>
+    <DataProvider role={access.role}>
       {/* Пасхалка — только у администраторов */}
       <EasterEggProvider enabled={access.role === 'admin'}>
         <Shell user={user} role={access.role} />
@@ -73,7 +73,8 @@ function Shell({ user, role }) {
   const members = useMemo(() => membersWithBalance(data), [data]);
   const projects = useMemo(() => projectsWithSummary(data), [data]);
   useViewSync('statements', data, isAdmin, (d) => d.members.map((m) => [m.id, memberStatement(d, m.id)]));
-  useViewSync('client_views', data, isAdmin, (d) => d.projects.map((p) => [p.id, clientView(d, p.id)]));
+  useViewSync('client_views', data, isAdmin, (d) => d.projects.filter((p) => !p.archived).map((p) => [p.id, clientView(d, p.id)]));
+  useEffect(() => { if (isAdmin && data.ready) ensureArchivedField(data.projects); }, [isAdmin, data.ready, data.projects]);
   useEffect(() => setAuditData(data), [data]);
 
   // На странице проекта новая операция сразу привязывается к нему

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { collection, doc, onSnapshot, query, where } from 'firebase/firestore';
 import { auth, db } from './firebase.js';
@@ -40,15 +40,17 @@ export function useAccess(user) {
 
 // Подписка на все коллекции. Данные студии небольшие, поэтому держим их в памяти целиком,
 // а все суммы считаем на клиенте — так приложение работает и офлайн.
-export function DataProvider({ children }) {
+// role: администратор получает все проекты, включая архивные; остальным сервер отдаёт только неархивные
+export function DataProvider({ children, role }) {
   const [state, setState] = useState({
     ready: false, error: null, members: [], projects: [], iterations: [], operations: [], accounts: [], account_ops: [], documents: [],
   });
 
   useEffect(() => {
     const loaded = new Set();
+    const isAdmin = role === 'admin';
     const unsubs = COLLECTIONS.map((name) => onSnapshot(
-      collection(db, name),
+      name === 'projects' && !isAdmin ? query(collection(db, name), where('archived', '==', false)) : collection(db, name),
       (snap) => {
         loaded.add(name);
         const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -57,9 +59,17 @@ export function DataProvider({ children }) {
       (error) => setState((s) => ({ ...s, error })),
     ));
     return () => unsubs.forEach((u) => u());
-  }, []);
+  }, [role]);
 
-  return <DataCtx.Provider value={state}>{children}</DataCtx.Provider>;
+  // Не администратору — без данных архивных проектов (их итераций, операций и документов)
+  const value = useMemo(() => {
+    if (role === 'admin') return state;
+    const visible = new Set(state.projects.map((p) => p.id));
+    const keep = (x) => !x.project_id || visible.has(x.project_id);
+    return { ...state, iterations: state.iterations.filter(keep), operations: state.operations.filter(keep), documents: state.documents.filter(keep) };
+  }, [state, role]);
+
+  return <DataCtx.Provider value={value}>{children}</DataCtx.Provider>;
 }
 
 // Данные сотрудника: только его выписка и его документы (больше правила ему ничего не отдают)
@@ -97,7 +107,12 @@ export function useClientData(projectIds) {
       onSnapshot(query(collection(db, 'documents'), where('project_id', '==', pid)), (snap) => {
         const ready = mark(`d${pid}`);
         setState((s) => ({ ...s, ready: s.ready || ready, documents: { ...s.documents, [pid]: snap.docs.map((d) => ({ id: d.id, ...d.data() })) } }));
-      }, fail),
+      }, (error) => {
+        // Проект в архиве (или доступ к нему закрыт) — документов просто нет, это не ошибка для заказчика
+        if (error?.code !== 'permission-denied') { fail(error); return; }
+        const ready = mark(`d${pid}`);
+        setState((s) => ({ ...s, ready: s.ready || ready, documents: { ...s.documents, [pid]: [] } }));
+      }),
     ]);
     if (!ids.length) setState((s) => ({ ...s, ready: true }));
     return () => unsubs.forEach((u) => u());

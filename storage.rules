@@ -33,9 +33,11 @@ service firebase.storage {
       return hasAccess() && role() == 'employee'
         && firestore.get(accessPath()).data.get('member_id', '') == memberId;
     }
+    // Заказчик видит файлы своих проектов, пока проект не в архиве (у архивного нет кабинета client_views)
     function isClient(projectId) {
       return hasAccess() && role() == 'client'
-        && projectId in firestore.get(accessPath()).data.get('project_ids', []);
+        && projectId in firestore.get(accessPath()).data.get('project_ids', [])
+        && firestore.exists(/databases/(default)/documents/client_views/$(projectId));
     }
     function canUpload() {
       return isAdmin() && resource == null && request.resource.size <= 25 * 1024 * 1024 && allowedType();

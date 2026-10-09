@@ -36,6 +36,10 @@ service cloud.firestore {
       return signedIn() && exists(accessPath())
         && myAccess().role == 'client' && projectId in myAccess().get('project_ids', []);
     }
+    // У архивного проекта кабинета заказчика нет — значит, и документов он не получает
+    function clientCanSee(projectId) {
+      return isClient(projectId) && exists(/databases/$(database)/documents/client_views/$(projectId));
+    }
 
     // ---------- Проверка полей ----------
     function money(v) { return v is int && v >= 0 && v <= 100000000000; }
@@ -54,7 +58,8 @@ service cloud.firestore {
     }
 
     function validProject(d) {
-      return d.keys().hasOnly(['name', 'client', 'budget', 'status', 'start_date', 'notes', 'member_ids', 'created_ms'])
+      return d.keys().hasOnly(['name', 'client', 'budget', 'status', 'start_date', 'notes', 'member_ids', 'archived', 'created_ms'])
+        && (!('archived' in d) || d.archived is bool)
         && nonEmpty(d.name, 200) && text(d.client, 200) && money(d.budget)
         && d.status in ['active', 'paused', 'done']
         && optDate(d.start_date) && text(d.notes, 5000)
@@ -151,8 +156,10 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Архивные проекты (archived == true) видит только администратор;
+    // наблюдатель читает проекты запросом where('archived', '==', false)
     match /projects/{doc} {
-      allow read: if canRead();
+      allow read: if isAdmin() || (canRead() && resource.data.archived == false);
       allow create, update: if isAdmin() && validProject(request.resource.data);
       allow delete: if isAdmin();
     }
@@ -181,7 +188,7 @@ service cloud.firestore {
     match /documents/{doc} {
       allow read: if canRead()
         || isEmployee(resource.data.get('member_id', ''))
-        || isClient(resource.data.get('project_id', ''));
+        || clientCanSee(resource.data.get('project_id', ''));
       allow create: if isAdmin() && validDocument(request.resource.data);
       // Файл документа не перепривязывается к другому сотруднику или файлу
       allow update: if isAdmin() && validDocument(request.resource.data)

@@ -9,6 +9,7 @@ import MonthGrid from '../components/MonthGrid.jsx';
 import OperationsList from '../components/OperationsList.jsx';
 import ProjectForm from '../components/ProjectForm.jsx';
 import ClientTab from '../components/ClientTab.jsx';
+import { setProjectArchived } from '../lib/actions.js';
 
 export default function Project() {
   const { id } = useParams();
@@ -19,6 +20,13 @@ export default function Project() {
   const [iterForm, setIterForm] = useState(null);
   const p = useMemo(() => projectView(data, id), [data, id]);
   const ops = useMemo(() => listOperations(data, { project_id: id }), [data, id]);
+
+  function toggleArchive() {
+    const msg = p.archived
+      ? `Вернуть «${p.name}» из архива? Его снова увидят наблюдатели, сотрудники (в своих начислениях) и заказчики.`
+      : `Отправить «${p.name}» в архив? Проект увидят только администраторы: у заказчика пропадёт доступ к нему и его документам, у сотрудников — начисления по нему.`;
+    if (confirm(msg)) setProjectArchived(p.id, !p.archived);
+  }
 
   if (!p) return <Empty title="Проект не найден"><Link to="/projects" className="btn sm" style={{ marginTop: 10 }}>К проектам</Link></Empty>;
   const s = p.summary;
@@ -33,11 +41,19 @@ export default function Project() {
         </div>
         {isAdmin && (
           <div className="row">
+            <button type="button" className="btn" onClick={toggleArchive}>{p.archived ? 'Вернуть из архива' : 'В архив'}</button>
             <button type="button" className="btn icon" onClick={() => setEditing(true)} aria-label="Настройки проекта"><Icon name="edit" /></button>
             <button type="button" className="btn primary hide-mobile" onClick={() => openOperation({ project_id: p.id })}><Icon name="plus" />Операция</button>
           </div>
         )}
       </div>
+
+      {p.archived && (
+        <div className="due-banner" style={{ marginBottom: 16 }}>
+          <Icon name="folder" width={20} />
+          <div>Проект в архиве — его видят только администраторы. Заказчик и сотрудники его не видят, в сводке он не показывается.</div>
+        </div>
+      )}
 
       <Tabs value={tab} onChange={setTab} options={[['overview', 'Обзор'], ['iterations', `Итерации · ${p.iterations.length}`], ['operations', 'Операции'], ['calendar', 'По дням'], ['client', 'Заказчик']]} />
 

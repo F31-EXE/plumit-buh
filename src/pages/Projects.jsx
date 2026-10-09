@@ -2,22 +2,33 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useApp } from '../App.jsx';
 import { PROJECT_STATUS, money } from '../format.js';
-import { Empty, Icon } from '../ui.jsx';
+import { Empty, Icon, Segmented } from '../ui.jsx';
 import ProjectForm from '../components/ProjectForm.jsx';
 
 export default function Projects() {
-  const { projects, isAdmin } = useApp();
+  const { projects: all, isAdmin } = useApp();
+  const [view, setView] = useState('active');
+  const archivedCount = all.filter((p) => p.archived).length;
+  const projects = all.filter((p) => (view === 'archive' ? p.archived : !p.archived));
   const [creating, setCreating] = useState(false);
   const navigate = useNavigate();
 
   return (
     <div>
       <div className="page-head">
-        <div><h1>Проекты</h1><div className="sub">{projects.length} всего</div></div>
+        <div className="grow"><h1>Проекты</h1><div className="sub">{view === 'archive' ? `В архиве: ${projects.length}` : `${projects.length} в работе и завершённых`}</div></div>
         {isAdmin && <button type="button" className="btn primary" onClick={() => setCreating(true)}><Icon name="plus" />Проект</button>}
       </div>
 
-      {!projects.length && <div className="card"><Empty title="Проектов пока нет">Создайте первый проект, добавьте команду и итерации.</Empty></div>}
+      {isAdmin && archivedCount > 0 && (
+        <div style={{ marginBottom: 16, maxWidth: 360 }}>
+          <Segmented className="fit" value={view} onChange={setView} options={[['active', 'Проекты'], ['archive', `Архив · ${archivedCount}`]]} />
+        </div>
+      )}
+
+      {!projects.length && (view === 'archive'
+        ? <div className="card"><Empty title="Архив пуст">Проекты попадают сюда кнопкой «В архив» на странице проекта.</Empty></div>
+        : <div className="card"><Empty title="Проектов пока нет">Создайте первый проект, добавьте команду и итерации.</Empty></div>)}
 
       <div className="projects-grid">
         {projects.map((p) => {

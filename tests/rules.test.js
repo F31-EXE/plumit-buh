@@ -1,5 +1,6 @@
 // Тесты правил безопасности. Запуск: npm run test:rules (поднимает эмулятор Firestore)
 import { after, before, beforeEach, test } from 'node:test';
+import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { assertFails, assertSucceeds, initializeTestEnvironment } from '@firebase/rules-unit-testing';
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
@@ -43,7 +44,8 @@ beforeEach(async () => {
     await setDoc(doc(db, 'documents/d1'), { member_id: 'm1', title: 'Договор', kind: 'contract', url: 'https://disk.yandex.ru/d/1', date: null, notes: '' });
     await setDoc(doc(db, 'documents/d2'), { member_id: 'm2', title: 'Договор', kind: 'contract', url: 'https://disk.yandex.ru/d/2', date: null, notes: '' });
     await setDoc(doc(db, 'accounts/a1'), { name: 'Резерв', bank: 'Точка', rate: 16, capitalization: 'monthly', opened: null, notes: '', archived: false });
-    await setDoc(doc(db, 'projects/p1'), { name: 'P', client: '', budget: 0, status: 'active', start_date: null, notes: '', member_ids: [] });
+    await setDoc(doc(db, 'projects/p1'), { name: 'P', client: '', budget: 0, status: 'active', start_date: null, notes: '', member_ids: [], archived: false });
+    await setDoc(doc(db, 'projects/old'), { name: 'Архивный', client: '', budget: 0, status: 'done', start_date: null, notes: '', member_ids: [], archived: true });
     await setDoc(doc(db, 'operations/o1'), op());
   });
 });
@@ -51,6 +53,7 @@ beforeEach(async () => {
 test('чтение: только пользователи из access с подтверждённой почтой', async () => {
   await assertSucceeds(getDocs(collection(admin(), 'operations')));
   await assertSucceeds(getDocs(collection(viewer(), 'operations')));
+  await assertSucceeds(getDocs(query(collection(viewer(), 'projects'), where('archived', '==', false))));
   await assertFails(getDocs(collection(stranger(), 'operations')));
   await assertFails(getDocs(collection(unverified(), 'operations')));
   await assertFails(getDocs(collection(env.unauthenticatedContext().firestore(), 'projects')));
@@ -262,4 +265,28 @@ test('файлы заказчика: только папки своих прое
   await assertFails(sClient().ref('client-docs/p1/c9/my.pdf').put(pdf, { contentType: 'application/pdf' }));
   await assertFails(sEmployee().ref('client-docs/p1/c1/contract.pdf').getMetadata());
   await assertSucceeds(sAdmin().ref('client-docs/p1/c8/act.pdf').put(pdf, { contentType: 'application/pdf' }));
+});
+
+test('архив: архивные проекты видит только администратор', async () => {
+  await assertSucceeds(getDoc(doc(admin(), 'projects/old')));
+  await assertSucceeds(getDocs(collection(admin(), 'projects')));
+  await assertFails(getDoc(doc(viewer(), 'projects/old')));
+  await assertFails(getDocs(collection(viewer(), 'projects')));                       // без фильтра — отказ
+  await assertSucceeds(getDocs(query(collection(viewer(), 'projects'), where('archived', '==', false))));
+  await assertSucceeds(updateDoc(doc(admin(), 'projects/p1'), { archived: true }));
+  await assertFails(updateDoc(doc(admin(), 'projects/p1'), { archived: 'yes' }));
+});
+
+test('архив: заказчик теряет доступ к документам и файлам проекта без кабинета', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.storage().ref('client-docs/p1/c1/contract.pdf').put(pdf, { contentType: 'application/pdf' });
+  });
+  const sClient = () => storageOf('cli', 'ceo@client.ru');
+  await assertSucceeds(getDocs(query(collection(client(), 'documents'), where('project_id', '==', 'p1'))));
+  await assertSucceeds(sClient().ref('client-docs/p1/c1/contract.pdf').getMetadata());
+  // проект ушёл в архив — приложение администратора удаляет кабинет client_views/p1
+  await env.withSecurityRulesDisabled(async (ctx) => { await deleteDoc(doc(ctx.firestore(), 'client_views/p1')); });
+  assert.equal((await getDoc(doc(client(), 'client_views/p1'))).exists(), false); // кабинета больше нет — данных ноль
+  await assertFails(getDocs(query(collection(client(), 'documents'), where('project_id', '==', 'p1'))));
+  await assertFails(sClient().ref('client-docs/p1/c1/contract.pdf').getMetadata());
 });
