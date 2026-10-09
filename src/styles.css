@@ -401,3 +401,10 @@ html.theme-fade, html.theme-fade * { transition: background-color .45s ease, col
 .changes { margin: 6px 0 0; padding-left: 16px; font-size: 13px; }
 .changes li { margin: 2px 0; overflow-wrap: anywhere; }
 .changes s { text-decoration-thickness: 1px; }
+.file-drop { display: grid; gap: 2px; justify-items: center; text-align: center; padding: 20px 14px; border: 1.5px dashed var(--border); border-radius: 14px; cursor: pointer; background: var(--surface-2); }
+.file-drop:hover { border-color: var(--accent); }
+.doc-preview { display: block; width: 100%; height: min(70vh, 720px); border: 1px solid var(--border); border-radius: 12px; background: #fff; }
+.doc-preview.img { height: auto; max-height: 70vh; object-fit: contain; background: transparent; }
+.pdf-view { max-height: min(72vh, 760px); overflow: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); padding: 8px; -webkit-overflow-scrolling: touch; }
+.pdf-view .pdf-page { display: block; width: 100%; height: auto; margin: 0 auto 8px; background: #fff; box-shadow: var(--shadow); border-radius: 4px; }
+.pdf-view .pdf-page:last-child { margin-bottom: 0; }

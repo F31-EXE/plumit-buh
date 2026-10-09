@@ -80,15 +80,28 @@
   },
   "emulators": {
     "auth": {
-      "port": 9099
+      "port": 9099,
+      "host": "127.0.0.1"
     },
     "firestore": {
-      "port": 8080
+      "port": 8080,
+      "host": "127.0.0.1"
     },
     "ui": {
       "enabled": true,
       "port": 4000
     },
-    "singleProjectMode": true
+    "singleProjectMode": true,
+    "storage": {
+      "port": 9199,
+      "host": "127.0.0.1"
+    },
+    "hosting": {
+      "host": "127.0.0.1",
+      "port": 5000
+    }
+  },
+  "storage": {
+    "rules": "storage.rules"
   }
 }

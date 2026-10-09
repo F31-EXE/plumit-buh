@@ -2,7 +2,8 @@
 import {
   collection, doc, getDocs, query, where, writeBatch,
 } from 'firebase/firestore';
-import { db } from './firebase.js';
+import { db, storage } from './firebase.js';
+import { deleteObject, ref as storageRef, uploadBytesResumable } from 'firebase/storage';
 import { emailKey } from './util.js';
 import { auditEntry, find } from './audit.js';
 
@@ -212,20 +213,75 @@ export function revokeAccess(email) {
 
 // ---------- Документы сотрудников (ссылки на файлы) ----------
 export const DOC_KINDS = { contract: 'Договор', act: 'Акт', nda: 'NDA', invoice: 'Счёт', other: 'Другое' };
+// Типы файлов, которые принимает хранилище (см. storage.rules)
+export const FILE_ACCEPT = '.pdf,.png,.jpg,.jpeg,.gif,.webp,.heic,.txt,.csv,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.rtf';
+export const MAX_FILE_MB = 25;
+const MIME_BY_EXT = {
+  pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp',
+  heic: 'image/heic', txt: 'text/plain', csv: 'text/csv', zip: 'application/zip', rtf: 'application/rtf',
+  doc: 'application/msword', xls: 'application/vnd.ms-excel', ppt: 'application/vnd.ms-powerpoint',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  odt: 'application/vnd.oasis.opendocument.text', ods: 'application/vnd.oasis.opendocument.spreadsheet',
+};
+export function fileMime(file) {
+  const ext = String(file.name).split('.').pop().toLowerCase();
+  return MIME_BY_EXT[ext] || null;
+}
+// Имя файла в хранилище: без слэшей и управляющих символов
+const safeFileName = (name) => String(name).replace(/[\/\\#?%*:|"<>\u0000-\u001f]/g, '_').slice(-150) || 'file';
+
+// Загружает файл документа и создаёт документ. onProgress(0..1). Возвращает промис.
+export function uploadDocument(f, file, onProgress) {
+  if (!storage) fail('Хранилище файлов не настроено — нужен тариф Blaze (см. README)');
+  const title = str(f.title, 300) || file.name;
+  if (!ref(f.member_id)) fail('Выберите сотрудника');
+  const contentType = fileMime(file);
+  if (!contentType) fail('Такой тип файла не поддерживается. Подойдут PDF, Word, Excel, картинки, текст, архив');
+  if (file.size > MAX_FILE_MB * 1024 * 1024) fail(`Файл больше ${MAX_FILE_MB} МБ`);
+  const docRef = newRef('documents');
+  const path = `documents/${f.member_id}/${docRef.id}/${safeFileName(file.name)}`;
+  const task = uploadBytesResumable(storageRef(storage, path), file, { contentType });
+  return new Promise((resolve, reject) => {
+    task.on('state_changed', (s) => onProgress?.(s.bytesTransferred / s.totalBytes), reject, () => {
+      const data = {
+        member_id: String(f.member_id),
+        title,
+        kind: DOC_KINDS[f.kind] ? f.kind : 'other',
+        storage_path: path,
+        file_name: String(file.name).slice(0, 300),
+        size: file.size,
+        content_type: contentType,
+        date: optDate(f.date),
+        notes: str(f.notes, 2000),
+      };
+      commit((b) => b.set(docRef, { ...data, created_ms: Date.now() }), [['create', 'document', docRef.id, { after: data }]])
+        .then(() => resolve(docRef.id))
+        // документ не сохранился — убираем загруженный файл, чтобы не висел «сиротой»
+        .catch((e) => { deleteObject(storageRef(storage, path)).catch(() => {}); reject(e); });
+    });
+  });
+}
+
 export function saveDocument(id, f) {
   const title = str(f.title, 300);
   if (!title) fail('Укажите название документа');
-  const url = str(f.url, 2000);
-  if (!/^https:\/\/\S+$/.test(url)) fail('Ссылка должна начинаться с https:// — например, на Google Диск или Яндекс Диск');
   if (!ref(f.member_id)) fail('Выберите сотрудника');
+  const existing = id ? find('documents', id) : null;
   const data = {
     member_id: String(f.member_id),
     title,
     kind: DOC_KINDS[f.kind] ? f.kind : 'other',
-    url,
     date: optDate(f.date),
     notes: str(f.notes, 2000),
   };
+  // У документа-файла меняются только описание и тип, файл остаётся тем же
+  if (!existing?.storage_path) {
+    const url = str(f.url, 2000);
+    if (!/^https:\/\/\S+$/.test(url)) fail('Ссылка должна начинаться с https:// — например, на Google Диск или Яндекс Диск');
+    data.url = url;
+  }
   if (id) {
     const before = find('documents', id);
     commit((b) => b.update(doc(db, 'documents', id), data), [['update', 'document', id, { before, after: { ...before, ...data } }]]);
@@ -234,9 +290,15 @@ export function saveDocument(id, f) {
     commit((b) => b.set(r, { ...data, created_ms: Date.now() }), [['create', 'document', r.id, { after: data }]]);
   }
 }
-export function deleteDocument(id) {
+export async function deleteDocument(id) {
   const before = find('documents', id);
-  commit((b) => b.delete(doc(db, 'documents', id)), [['delete', 'document', id, { before }]]);
+  // Сначала файл, потом запись: если файл уже удалён — не страшно
+  if (before?.storage_path && storage) {
+    await deleteObject(storageRef(storage, before.storage_path)).catch((e) => {
+      if (e?.code !== 'storage/object-not-found') throw e;
+    });
+  }
+  await commit((b) => b.delete(doc(db, 'documents', id)), [['delete', 'document', id, { before }]]);
 }
 
 // ---------- Накопительные счета ----------

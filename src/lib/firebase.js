@@ -4,6 +4,7 @@ import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager, connectFirestoreEmulator,
   terminate, clearIndexedDbPersistence,
 } from 'firebase/firestore';
+import { getStorage, connectStorageEmulator } from 'firebase/storage';
 
 // Конфигурация веб-приложения Firebase (Консоль → Настройки проекта → Ваши приложения).
 // Эти значения не секретные: доступ к данным защищают правила firestore.rules.
@@ -26,9 +27,13 @@ export const db = app
   ? initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) })
   : null;
 
+// Хранилище файлов (документы сотрудников) — нужен тариф Blaze и созданный bucket
+export const storage = app && config.storageBucket ? getStorage(app) : null;
+
 if (app && env.VITE_USE_EMULATORS === '1') {
   connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
   connectFirestoreEmulator(db, '127.0.0.1', 8080);
+  if (storage) connectStorageEmulator(storage, '127.0.0.1', 9199);
 }
 
 // Выход: кроме сессии стираем локальную копию данных (офлайн-кэш Firestore в IndexedDB),

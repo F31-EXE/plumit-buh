@@ -81,11 +81,20 @@ service cloud.firestore {
         && (d.type == 'transfer' ? id(d.from_member_id) : true);
     }
 
+    // Документ — либо ссылка (url, только https), либо файл в Storage (storage_path в папке этого сотрудника)
     function validDocument(d) {
-      return d.keys().hasOnly(['member_id', 'title', 'kind', 'url', 'date', 'notes', 'created_ms'])
+      return d.keys().hasOnly(['member_id', 'title', 'kind', 'url', 'storage_path', 'file_name', 'size', 'content_type',
+                               'date', 'notes', 'created_ms'])
         && id(d.member_id) && nonEmpty(d.title, 300)
         && d.kind in ['contract', 'act', 'nda', 'invoice', 'other']
-        && d.url is string && d.url.size() <= 2000 && d.url.matches('^https://.+')
+        && (
+          (d.get('url', null) is string && d.url.size() <= 2000 && d.url.matches('^https://.+')
+            && d.get('storage_path', null) == null)
+          || (d.get('storage_path', null) is string && d.storage_path.size() <= 600
+            && d.storage_path.matches('^documents/' + d.member_id + '/[^/]+/[^/]+$')
+            && d.get('url', null) == null
+            && text(d.get('file_name', ''), 300) && d.get('size', 0) is int && text(d.get('content_type', ''), 200))
+        )
         && optDate(d.date) && text(d.notes, 2000)
         && (!('created_ms' in d) || ms(d.created_ms));
     }
@@ -151,7 +160,11 @@ service cloud.firestore {
 
     match /documents/{doc} {
       allow read: if canRead() || isEmployee(resource.data.member_id);
-      allow create, update: if isAdmin() && validDocument(request.resource.data);
+      allow create: if isAdmin() && validDocument(request.resource.data);
+      // Файл документа не перепривязывается к другому сотруднику или файлу
+      allow update: if isAdmin() && validDocument(request.resource.data)
+        && request.resource.data.member_id == resource.data.member_id
+        && request.resource.data.get('storage_path', null) == resource.data.get('storage_path', null);
       allow delete: if isAdmin();
     }
 

@@ -6,16 +6,17 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:emulators": "firebase emulators:exec --project demo-plumit --only auth,firestore \"vite --mode emulators\"",
+    "dev:emulators": "firebase emulators:exec --project demo-plumit --only auth,firestore,storage \"vite --mode emulators\"",
     "build": "vite build",
     "preview": "vite preview",
     "deploy": "vite build && firebase deploy",
     "test": "node --test tests/finance.test.js",
-    "test:rules": "firebase emulators:exec --project demo-plumit --only firestore \"node --test tests/rules.test.js\""
+    "test:rules": "firebase emulators:exec --project demo-plumit --only firestore,storage \"node --test tests/rules.test.js\""
   },
   "dependencies": {
     "exceljs": "^4.4.0",
     "firebase": "^13.0.0",
+    "pdfjs-dist": "^4.10.38",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.18.4"

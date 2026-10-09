@@ -56,6 +56,12 @@ jobs:
           service_account: github-deploy@plumit-buh.iam.gserviceaccount.com
       - run: npm ci
       - run: npm run build
+      # Правила хранилища файлов: если хранилище ещё не создано (нужен тариф Blaze) — предупреждение, сайт всё равно выкладывается
+      - name: Правила хранилища файлов
+        run: |
+          if ! npx firebase deploy --only storage --non-interactive; then
+            echo "::warning::Правила хранилища не выложены. Включите тариф Blaze, создайте Storage и запустите scripts/setup-storage.sh (README, «Документы-файлы»)"
+          fi
       - name: Деплой (сайт + правила Firestore)
         run: npx firebase deploy --only hosting,firestore:rules --non-interactive
       - name: Подсказка

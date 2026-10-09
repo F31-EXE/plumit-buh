@@ -17,11 +17,16 @@ const op = (extra = {}) => ({
 });
 
 before(async () => {
-  env = await initializeTestEnvironment({ projectId: 'demo-plumit', firestore: { rules: readFileSync('firestore.rules', 'utf8') } });
+  env = await initializeTestEnvironment({
+    projectId: 'demo-plumit',
+    firestore: { rules: readFileSync('firestore.rules', 'utf8') },
+    storage: { rules: readFileSync('storage.rules', 'utf8') },
+  });
 });
 after(() => env.cleanup());
 beforeEach(async () => {
   await env.clearFirestore();
+  await env.clearStorage();
   await env.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();
     await setDoc(doc(db, 'access/boss@plumit.ru'), { role: 'admin' });
@@ -148,4 +153,57 @@ test('журнал изменений: только администратор, 
   await assertFails(deleteDoc(doc(db, 'audit/a1')));
   await assertSucceeds(getDocs(collection(viewer(), 'audit')));
   await assertFails(getDocs(collection(employee(), 'audit')));
+});
+
+// ---------- Хранилище файлов (storage.rules) ----------
+const pdf = new Uint8Array([37, 80, 68, 70, 45, 49, 46, 52]); // %PDF-1.4
+const storageOf = (uid, email) => env.authenticatedContext(uid, { email, email_verified: true }).storage();
+const sAdmin = () => storageOf('admin', 'Boss@Plumit.ru');
+const sViewer = () => storageOf('viewer', 'view@plumit.ru');
+const sEmployee = () => storageOf('emp', 'dev@plumit.ru');
+const sStranger = () => storageOf('s', 'other@mail.ru');
+
+async function seedFiles() {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.storage().ref('documents/m1/d1/contract.pdf').put(pdf, { contentType: 'application/pdf' });
+    await ctx.storage().ref('documents/m2/d2/contract.pdf').put(pdf, { contentType: 'application/pdf' });
+  });
+}
+
+test('файлы: сотрудник открывает только свои, посторонний — ничего', async () => {
+  await seedFiles();
+  await assertSucceeds(sEmployee().ref('documents/m1/d1/contract.pdf').getMetadata());
+  await assertFails(sEmployee().ref('documents/m2/d2/contract.pdf').getMetadata());
+  await assertSucceeds(sViewer().ref('documents/m2/d2/contract.pdf').getMetadata());
+  await assertFails(sStranger().ref('documents/m1/d1/contract.pdf').getMetadata());
+  await assertFails(env.unauthenticatedContext().storage().ref('documents/m1/d1/contract.pdf').getMetadata());
+  await assertFails(sEmployee().ref('other/secret.pdf').getMetadata());
+});
+
+test('файлы: загружает и удаляет только администратор, только документы до 25 МБ', async () => {
+  await seedFiles();
+  await assertSucceeds(sAdmin().ref('documents/m1/d3/act.pdf').put(pdf, { contentType: 'application/pdf' }));
+  await assertSucceeds(sAdmin().ref('documents/m1/d4/scan.jpg').put(pdf, { contentType: 'image/jpeg' }));
+  await assertSucceeds(sAdmin().ref('documents/m1/d5/a.docx').put(pdf, { contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }));
+  await assertFails(sAdmin().ref('documents/m1/d6/x.html').put(pdf, { contentType: 'text/html' }));
+  await assertFails(sAdmin().ref('documents/m1/d7/x.svg').put(pdf, { contentType: 'image/svg+xml' }));
+  await assertFails(sAdmin().ref('documents/m1/d8/big.pdf').put(new Uint8Array(25 * 1024 * 1024 + 1), { contentType: 'application/pdf' }));
+  await assertFails(sAdmin().ref('documents/m1/d1/contract.pdf').put(pdf, { contentType: 'application/pdf' })); // перезапись запрещена
+  await assertFails(sAdmin().ref('elsewhere/x.pdf').put(pdf, { contentType: 'application/pdf' }));
+  await assertFails(sEmployee().ref('documents/m1/d9/my.pdf').put(pdf, { contentType: 'application/pdf' }));
+  await assertFails(sViewer().ref('documents/m1/d9/my.pdf').put(pdf, { contentType: 'application/pdf' }));
+  await assertFails(sEmployee().ref('documents/m1/d1/contract.pdf').delete());
+  await assertSucceeds(sAdmin().ref('documents/m1/d1/contract.pdf').delete());
+});
+
+test('документ-файл в базе: путь только в папке этого сотрудника, файл не перепривязывается', async () => {
+  const db = admin();
+  const fileDoc = { member_id: 'm1', title: 'Скан', kind: 'act', storage_path: 'documents/m1/f1/scan.pdf', file_name: 'scan.pdf',
+    size: 100, content_type: 'application/pdf', date: null, notes: '', created_ms: 1 };
+  await assertSucceeds(setDoc(doc(db, 'documents/f1'), fileDoc));
+  await assertFails(setDoc(doc(db, 'documents/f2'), { ...fileDoc, storage_path: 'documents/m2/f2/scan.pdf' }));
+  await assertFails(setDoc(doc(db, 'documents/f3'), { ...fileDoc, url: 'https://x.ru' }));
+  await assertFails(updateDoc(doc(db, 'documents/f1'), { storage_path: 'documents/m1/f9/other.pdf' }));
+  await assertFails(updateDoc(doc(db, 'documents/f1'), { member_id: 'm2' }));
+  await assertSucceeds(updateDoc(doc(db, 'documents/f1'), { title: 'Скан акта' }));
 });

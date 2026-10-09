@@ -1,0 +1,57 @@
+rules_version = '2';
+
+// Файлы документов сотрудников: documents/{memberId}/{docId}/{имя файла}.
+// Права берутся из той же коллекции access, что и в firestore.rules:
+//   администратор и наблюдатель видят все файлы, сотрудник — только файлы из своей папки,
+//   загружает и удаляет только администратор.
+service firebase.storage {
+  match /b/{bucket}/o {
+    function email() {
+      return request.auth.token.email.lower();
+    }
+    function signedIn() {
+      return request.auth != null
+        && request.auth.token.email is string
+        && request.auth.token.email_verified == true;
+    }
+    function accessPath() {
+      return /databases/(default)/documents/access/$(email());
+    }
+    function hasAccess() {
+      return signedIn() && firestore.exists(accessPath());
+    }
+    function role() {
+      return firestore.get(accessPath()).data.role;
+    }
+    function canReadAll() {
+      return hasAccess() && role() in ['admin', 'viewer'];
+    }
+    function isAdmin() {
+      return hasAccess() && role() == 'admin';
+    }
+    function isEmployee(memberId) {
+      return hasAccess() && role() == 'employee'
+        && firestore.get(accessPath()).data.get('member_id', '') == memberId;
+    }
+    // Только документы: PDF, офисные форматы, картинки (без SVG — в нём может быть код), текст, архивы
+    function allowedType() {
+      return request.resource.contentType.matches(
+        'application/pdf|image/(png|jpeg|gif|webp|heic|heif)|text/plain|text/csv|application/zip|application/x-zip-compressed'
+        + '|application/msword|application/vnd[.]ms-excel|application/vnd[.]ms-powerpoint'
+        + '|application/vnd[.]openxmlformats-officedocument[.].+|application/vnd[.]oasis[.]opendocument[.].+|application/rtf');
+    }
+
+    match /documents/{memberId}/{docId}/{fileName} {
+      allow read: if canReadAll() || isEmployee(memberId);
+      // Только новый файл: перезаписать существующий нельзя (resource == null — по этому пути файла ещё нет)
+      allow create: if isAdmin() && resource == null && request.resource.size <= 25 * 1024 * 1024 && allowedType();
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    // Всё остальное закрыто
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
