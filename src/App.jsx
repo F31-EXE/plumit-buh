@@ -1,10 +1,10 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, Navigate, Route, Routes, matchPath, useLocation } from 'react-router-dom';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { configured, db, logout } from './lib/firebase.js';
 import { DataProvider, useAuthUser, useData, useAccess } from './lib/store.jsx';
-import { memberStatement, membersWithBalance, projectsWithSummary } from './lib/finance.js';
-import { stableJson, writeStatements } from './lib/actions.js';
+import { clientView, memberStatement, membersWithBalance, projectsWithSummary } from './lib/finance.js';
+import { stableJson, writeViews } from './lib/actions.js';
 import { setAuditData } from './lib/audit.js';
 import { Icon, Loading, ToastProvider } from './ui.jsx';
 import Login, { NoAccess, VerifyEmail } from './pages/Login.jsx';
@@ -16,6 +16,7 @@ import Team from './pages/Team.jsx';
 import Member from './pages/Member.jsx';
 import Savings, { SavingsAccount } from './pages/Savings.jsx';
 import EmployeeShell from './pages/Employee.jsx';
+import ClientShell from './pages/Client.jsx';
 import Reports from './pages/Reports.jsx';
 import Journal from './pages/Journal.jsx';
 import Settings from './pages/Settings.jsx';
@@ -40,11 +41,7 @@ const NAV = [
 
 export default function App() {
   if (!configured) return <NotConfigured />;
-  return (
-    <EasterEggProvider>
-      <ToastProvider><Gate /></ToastProvider>
-    </EasterEggProvider>
-  );
+  return <ToastProvider><Gate /></ToastProvider>;
 }
 
 function Gate() {
@@ -56,9 +53,13 @@ function Gate() {
   if (access === undefined) return <Loading />;
   if (!access) return <NoAccess user={user} />;
   if (access.role === 'employee') return <EmployeeShell user={user} memberId={access.member_id} />;
+  if (access.role === 'client') return <ClientShell user={user} projectIds={access.project_ids} />;
   return (
     <DataProvider>
-      <Shell user={user} role={access.role} />
+      {/* Пасхалка — только у администраторов */}
+      <EasterEggProvider enabled={access.role === 'admin'}>
+        <Shell user={user} role={access.role} />
+      </EasterEggProvider>
     </DataProvider>
   );
 }
@@ -71,7 +72,8 @@ function Shell({ user, role }) {
 
   const members = useMemo(() => membersWithBalance(data), [data]);
   const projects = useMemo(() => projectsWithSummary(data), [data]);
-  useStatementSync(data, isAdmin);
+  useViewSync('statements', data, isAdmin, (d) => d.members.map((m) => [m.id, memberStatement(d, m.id)]));
+  useViewSync('client_views', data, isAdmin, (d) => d.projects.map((p) => [p.id, clientView(d, p.id)]));
   useEffect(() => setAuditData(data), [data]);
 
   // На странице проекта новая операция сразу привязывается к нему
@@ -146,24 +148,24 @@ function Shell({ user, role }) {
   );
 }
 
-// Выписки сотрудников (statements/{memberId}) держим актуальными: приложение администратора
-// пересчитывает их после каждого изменения данных и записывает только изменившиеся.
-function useStatementSync(data, enabled) {
+// Выписки сотрудников (statements/{memberId}) и кабинеты заказчиков (client_views/{projectId})
+// держим актуальными: приложение администратора пересчитывает их после каждого изменения данных
+// и записывает только изменившиеся.
+function useViewSync(col, data, enabled, compute) {
   const [existing, setExisting] = useState(null);
+  const computeRef = useRef(compute);
+  computeRef.current = compute;
   useEffect(() => {
     if (!enabled) return undefined;
-    return onSnapshot(collection(db, 'statements'), (snap) => {
+    return onSnapshot(collection(db, col), (snap) => {
       setExisting(new Map(snap.docs.map((d) => [d.id, stableJson(d.data())])));
     }, () => {});
-  }, [enabled]);
+  }, [col, enabled]);
   useEffect(() => {
     if (!enabled || !existing || !data.ready) return undefined;
-    const t = setTimeout(() => {
-      const desired = new Map(data.members.map((m) => [m.id, memberStatement(data, m.id)]));
-      writeStatements(desired, existing);
-    }, 1200);
+    const t = setTimeout(() => writeViews(col, new Map(computeRef.current(data)), existing), 1200);
     return () => clearTimeout(t);
-  }, [data, existing, enabled]);
+  }, [col, data, existing, enabled]);
 }
 
 function NotConfigured() {

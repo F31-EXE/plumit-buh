@@ -99,10 +99,10 @@ export function PasswordForm() {
 }
 
 function Access() {
-  const { me, members } = useApp();
+  const { me, members, projects } = useApp();
   const toast = useToast();
   const [list, setList] = useState([]);
-  const [f, setF] = useState({ email: '', name: '', role: 'viewer', member_id: '' });
+  const [f, setF] = useState({ email: '', name: '', role: 'viewer', member_id: '', project_ids: [] });
   const [error, setError] = useState(null);
 
   useEffect(() => onSnapshot(collection(db, 'access'), (snap) => {
@@ -114,8 +114,8 @@ function Access() {
     setError(null);
     try {
       const name = f.name || (f.role === 'employee' ? members.find((m) => m.id === f.member_id)?.name : '');
-      grantAccess(f.email, f.role, name, f.member_id);
-      setF({ email: '', name: '', role: 'viewer', member_id: '' });
+      grantAccess(f.email, f.role, name, f.member_id, f.project_ids);
+      setF({ email: '', name: '', role: 'viewer', member_id: '', project_ids: [] });
       toast('Доступ выдан');
     } catch (err) { setError(err); }
   }
@@ -148,9 +148,24 @@ function Access() {
             <select className="input" value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })}>
               <option value="viewer">Только просмотр (видит всё)</option>
               <option value="employee">Сотрудник (видит только свои начисления)</option>
+              <option value="client">Заказчик (видит только свои проекты)</option>
               <option value="admin">Администратор (может вносить и править)</option>
             </select>
           </Field>
+          {f.role === 'client' && (
+            <div className="field full">
+              <span>Проекты заказчика</span>
+              <div className="row wrap">
+                {projects.map((p) => {
+                  const on = f.project_ids.includes(p.id);
+                  return (
+                    <button type="button" key={p.id} className={`btn sm ${on ? 'primary' : ''}`}
+                      onClick={() => setF({ ...f, project_ids: on ? f.project_ids.filter((x) => x !== p.id) : [...f.project_ids, p.id] })}>{p.name}</button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {f.role === 'employee' && (
             <Field label="Кто это в команде" className="full">
               <select className="input" value={f.member_id} onChange={(e) => setF({ ...f, member_id: e.target.value })} required>
@@ -167,7 +182,7 @@ function Access() {
   );
 }
 
-const ROLE_LABEL = { admin: 'администратор', viewer: 'просмотр', employee: 'сотрудник' };
+const ROLE_LABEL = { admin: 'администратор', viewer: 'просмотр', employee: 'сотрудник', client: 'заказчик' };
 
 function Import() {
   const { me, data } = useApp();

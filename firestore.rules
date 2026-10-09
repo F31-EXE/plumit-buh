@@ -1,7 +1,8 @@
 rules_version = '2';
 
-// Доступ выдаётся документом access/{email} с полем role: 'admin' | 'viewer' | 'employee'.
+// Доступ выдаётся документом access/{email} с полем role: 'admin' | 'viewer' | 'employee' | 'client'.
 // Сотрудник (employee, с полем member_id) видит только свою выписку statements/{member_id} и свои документы.
+// Заказчик (client, со списком project_ids) видит только client_views/{projectId} своих проектов и документы этих проектов.
 // Первого администратора создайте вручную в консоли Firebase (см. README).
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -30,6 +31,10 @@ service cloud.firestore {
     function isEmployee(memberId) {
       return signedIn() && exists(accessPath())
         && myAccess().role == 'employee' && myAccess().get('member_id', '') == memberId;
+    }
+    function isClient(projectId) {
+      return signedIn() && exists(accessPath())
+        && myAccess().role == 'client' && projectId in myAccess().get('project_ids', []);
     }
 
     // ---------- Проверка полей ----------
@@ -81,17 +86,23 @@ service cloud.firestore {
         && (d.type == 'transfer' ? id(d.from_member_id) : true);
     }
 
-    // Документ — либо ссылка (url, только https), либо файл в Storage (storage_path в папке этого сотрудника)
+    // Документ принадлежит либо сотруднику (member_id), либо проекту для заказчика (project_id).
+    // Содержимое — либо ссылка (url, только https), либо файл в Storage в папке владельца.
+    function docFolder(d) {
+      return d.get('member_id', null) != null ? 'documents/' + d.member_id : 'client-docs/' + d.project_id;
+    }
     function validDocument(d) {
-      return d.keys().hasOnly(['member_id', 'title', 'kind', 'url', 'storage_path', 'file_name', 'size', 'content_type',
+      return d.keys().hasOnly(['member_id', 'project_id', 'title', 'kind', 'url', 'storage_path', 'file_name', 'size', 'content_type',
                                'date', 'notes', 'created_ms'])
-        && id(d.member_id) && nonEmpty(d.title, 300)
+        && ((id(d.get('member_id', null)) && d.get('project_id', null) == null)
+            || (id(d.get('project_id', null)) && d.get('member_id', null) == null))
+        && nonEmpty(d.title, 300)
         && d.kind in ['contract', 'act', 'nda', 'invoice', 'other']
         && (
           (d.get('url', null) is string && d.url.size() <= 2000 && d.url.matches('^https://.+')
             && d.get('storage_path', null) == null)
           || (d.get('storage_path', null) is string && d.storage_path.size() <= 600
-            && d.storage_path.matches('^documents/' + d.member_id + '/[^/]+/[^/]+$')
+            && d.storage_path.matches('^' + docFolder(d) + '/[^/]+/[^/]+$')
             && d.get('url', null) == null
             && text(d.get('file_name', ''), 300) && d.get('size', 0) is int && text(d.get('content_type', ''), 200))
         )
@@ -122,9 +133,12 @@ service cloud.firestore {
     match /access/{key} {
       allow read: if isAdmin() || (signedIn() && key == email());
       allow create, update: if isAdmin()
-        && request.resource.data.keys().hasOnly(['role', 'name', 'added_ms', 'member_id'])
-        && request.resource.data.role in ['admin', 'viewer', 'employee']
+        && request.resource.data.keys().hasOnly(['role', 'name', 'added_ms', 'member_id', 'project_ids'])
+        && request.resource.data.role in ['admin', 'viewer', 'employee', 'client']
         && (request.resource.data.role != 'employee' || id(request.resource.data.get('member_id', null)))
+        && (request.resource.data.role != 'client'
+            || (request.resource.data.get('project_ids', null) is list
+                && request.resource.data.project_ids.size() > 0 && request.resource.data.project_ids.size() <= 100))
         && text(request.resource.data.get('name', ''), 100)
         // Администратор не может случайно лишить прав сам себя
         && (key != email() || request.resource.data.role == 'admin');
@@ -158,12 +172,21 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Кабинет заказчика: пересчитывается приложением администратора, как и выписки сотрудников
+    match /client_views/{projectId} {
+      allow read: if canRead() || isClient(projectId);
+      allow write: if isAdmin();
+    }
+
     match /documents/{doc} {
-      allow read: if canRead() || isEmployee(resource.data.member_id);
+      allow read: if canRead()
+        || isEmployee(resource.data.get('member_id', ''))
+        || isClient(resource.data.get('project_id', ''));
       allow create: if isAdmin() && validDocument(request.resource.data);
       // Файл документа не перепривязывается к другому сотруднику или файлу
       allow update: if isAdmin() && validDocument(request.resource.data)
-        && request.resource.data.member_id == resource.data.member_id
+        && request.resource.data.get('member_id', null) == resource.data.get('member_id', null)
+        && request.resource.data.get('project_id', null) == resource.data.get('project_id', null)
         && request.resource.data.get('storage_path', null) == resource.data.get('storage_path', null);
       allow delete: if isAdmin();
     }

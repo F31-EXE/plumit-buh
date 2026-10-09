@@ -101,12 +101,12 @@ function MyDocuments({ documents }) {
   );
 }
 
-function MySettings({ user }) {
+export function MySettings({ user, roleLabel = 'сотрудник' }) {
   const { theme, setTheme } = useTheme();
   const hasPassword = user.providerData.some((p) => p.providerId === 'password');
   return (
     <div className="stack" style={{ maxWidth: 720 }}>
-      <div className="page-head" style={{ marginBottom: 0 }}><div className="grow"><h1>Настройки</h1><div className="sub">{user.email} · сотрудник</div></div></div>
+      <div className="page-head" style={{ marginBottom: 0 }}><div className="grow"><h1>Настройки</h1><div className="sub">{user.email} · {roleLabel}</div></div></div>
       <div className="card stack">
         <h2>Оформление</h2>
         <Segmented className="fit" value={theme} onChange={(t) => setTheme(t)} options={[['auto', 'Авто'], ['light', 'Светлая'], ['dark', 'Тёмная']]} />

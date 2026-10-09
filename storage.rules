@@ -1,9 +1,9 @@
 rules_version = '2';
 
-// Файлы документов сотрудников: documents/{memberId}/{docId}/{имя файла}.
+// Файлы документов: сотрудников — documents/{memberId}/…, заказчиков — client-docs/{projectId}/….
 // Права берутся из той же коллекции access, что и в firestore.rules:
-//   администратор и наблюдатель видят все файлы, сотрудник — только файлы из своей папки,
-//   загружает и удаляет только администратор.
+//   администратор и наблюдатель видят все файлы, сотрудник — только свою папку,
+//   заказчик — только папки своих проектов; загружает и удаляет только администратор.
 service firebase.storage {
   match /b/{bucket}/o {
     function email() {
@@ -33,6 +33,13 @@ service firebase.storage {
       return hasAccess() && role() == 'employee'
         && firestore.get(accessPath()).data.get('member_id', '') == memberId;
     }
+    function isClient(projectId) {
+      return hasAccess() && role() == 'client'
+        && projectId in firestore.get(accessPath()).data.get('project_ids', []);
+    }
+    function canUpload() {
+      return isAdmin() && resource == null && request.resource.size <= 25 * 1024 * 1024 && allowedType();
+    }
     // Только документы: PDF, офисные форматы, картинки (без SVG — в нём может быть код), текст, архивы
     function allowedType() {
       return request.resource.contentType.matches(
@@ -41,10 +48,17 @@ service firebase.storage {
         + '|application/vnd[.]openxmlformats-officedocument[.].+|application/vnd[.]oasis[.]opendocument[.].+|application/rtf');
     }
 
+    // Только новый файл: перезаписать существующий нельзя (resource == null — по этому пути файла ещё нет)
     match /documents/{memberId}/{docId}/{fileName} {
       allow read: if canReadAll() || isEmployee(memberId);
-      // Только новый файл: перезаписать существующий нельзя (resource == null — по этому пути файла ещё нет)
-      allow create: if isAdmin() && resource == null && request.resource.size <= 25 * 1024 * 1024 && allowedType();
+      allow create: if canUpload();
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    match /client-docs/{projectId}/{docId}/{fileName} {
+      allow read: if canReadAll() || isClient(projectId);
+      allow create: if canUpload();
       allow update: if false;
       allow delete: if isAdmin();
     }

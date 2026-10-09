@@ -9,6 +9,7 @@ const admin = () => env.authenticatedContext('admin', { email: 'Boss@Plumit.ru',
 const viewer = () => env.authenticatedContext('viewer', { email: 'view@plumit.ru', email_verified: true }).firestore();
 const unverified = () => env.authenticatedContext('x', { email: 'view@plumit.ru', email_verified: false }).firestore();
 const employee = () => env.authenticatedContext('emp', { email: 'dev@plumit.ru', email_verified: true }).firestore();
+const client = () => env.authenticatedContext('cli', { email: 'ceo@client.ru', email_verified: true }).firestore();
 const stranger = () => env.authenticatedContext('s', { email: 'other@mail.ru', email_verified: true }).firestore();
 
 const op = (extra = {}) => ({
@@ -32,6 +33,11 @@ beforeEach(async () => {
     await setDoc(doc(db, 'access/boss@plumit.ru'), { role: 'admin' });
     await setDoc(doc(db, 'access/view@plumit.ru'), { role: 'viewer' });
     await setDoc(doc(db, 'access/dev@plumit.ru'), { role: 'employee', member_id: 'm1' });
+    await setDoc(doc(db, 'access/ceo@client.ru'), { role: 'client', project_ids: ['p1'] });
+    await setDoc(doc(db, 'client_views/p1'), { name: 'P', budget: 100 });
+    await setDoc(doc(db, 'client_views/p2'), { name: 'Чужой', budget: 100 });
+    await setDoc(doc(db, 'documents/c1'), { project_id: 'p1', title: 'Договор', kind: 'contract', url: 'https://x.ru/1', date: null, notes: '' });
+    await setDoc(doc(db, 'documents/c2'), { project_id: 'p2', title: 'Договор', kind: 'contract', url: 'https://x.ru/2', date: null, notes: '' });
     await setDoc(doc(db, 'statements/m1'), { name: 'Денис' });
     await setDoc(doc(db, 'statements/m2'), { name: 'Анна' });
     await setDoc(doc(db, 'documents/d1'), { member_id: 'm1', title: 'Договор', kind: 'contract', url: 'https://disk.yandex.ru/d/1', date: null, notes: '' });
@@ -206,4 +212,54 @@ test('документ-файл в базе: путь только в папке
   await assertFails(updateDoc(doc(db, 'documents/f1'), { storage_path: 'documents/m1/f9/other.pdf' }));
   await assertFails(updateDoc(doc(db, 'documents/f1'), { member_id: 'm2' }));
   await assertSucceeds(updateDoc(doc(db, 'documents/f1'), { title: 'Скан акта' }));
+});
+
+test('заказчик видит только свои проекты и их документы', async () => {
+  const db = client();
+  await assertSucceeds(getDoc(doc(db, 'client_views/p1')));
+  await assertFails(getDoc(doc(db, 'client_views/p2')));
+  await assertSucceeds(getDocs(query(collection(db, 'documents'), where('project_id', '==', 'p1'))));
+  await assertFails(getDocs(query(collection(db, 'documents'), where('project_id', '==', 'p2'))));
+  await assertFails(getDocs(query(collection(db, 'documents'), where('member_id', '==', 'm1'))));
+  await assertFails(getDocs(collection(db, 'documents')));
+  for (const c of ['operations', 'projects', 'iterations', 'members', 'statements', 'accounts', 'audit', 'client_views']) {
+    await assertFails(getDocs(collection(db, c)));
+  }
+  await assertFails(getDoc(doc(db, 'projects/p1')));
+  await assertFails(setDoc(doc(db, 'client_views/p1'), { name: 'x' }));
+  await assertFails(setDoc(doc(db, 'access/ceo@client.ru'), { role: 'client', project_ids: ['p1', 'p2'] }));
+  // сотрудник не видит кабинет заказчика и документы проекта
+  await assertFails(getDoc(doc(employee(), 'client_views/p1')));
+  await assertFails(getDocs(query(collection(employee(), 'documents'), where('project_id', '==', 'p1'))));
+});
+
+test('документы проекта и доступ заказчика: проверки администратора', async () => {
+  const db = admin();
+  const d = { project_id: 'p1', title: 'Акт', kind: 'act', url: 'https://x.ru/a', date: null, notes: '', created_ms: 1 };
+  await assertSucceeds(setDoc(doc(db, 'documents/c3'), d));
+  await assertFails(setDoc(doc(db, 'documents/c4'), { ...d, member_id: 'm1' }));            // одновременно двум владельцам нельзя
+  const f = { project_id: 'p1', title: 'Скан', kind: 'act', storage_path: 'client-docs/p1/c5/a.pdf', file_name: 'a.pdf', size: 1, content_type: 'application/pdf', date: null, notes: '' };
+  await assertSucceeds(setDoc(doc(db, 'documents/c5'), f));
+  await assertFails(setDoc(doc(db, 'documents/c6'), { ...f, storage_path: 'client-docs/p2/c6/a.pdf' }));
+  await assertFails(setDoc(doc(db, 'documents/c7'), { ...f, storage_path: 'documents/p1/c7/a.pdf' }));
+  await assertFails(updateDoc(doc(db, 'documents/c3'), { project_id: 'p2' }));
+  await assertFails(setDoc(doc(db, 'access/new@client.ru'), { role: 'client', name: 'X', added_ms: 1 }));
+  await assertFails(setDoc(doc(db, 'access/new@client.ru'), { role: 'client', name: 'X', added_ms: 1, project_ids: [] }));
+  await assertSucceeds(setDoc(doc(db, 'access/new@client.ru'), { role: 'client', name: 'X', added_ms: 1, project_ids: ['p1', 'p2'] }));
+  await assertSucceeds(getDoc(doc(viewer(), 'client_views/p2')));
+});
+
+test('файлы заказчика: только папки своих проектов', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.storage().ref('client-docs/p1/c1/contract.pdf').put(pdf, { contentType: 'application/pdf' });
+    await ctx.storage().ref('client-docs/p2/c2/contract.pdf').put(pdf, { contentType: 'application/pdf' });
+    await ctx.storage().ref('documents/m1/d1/contract.pdf').put(pdf, { contentType: 'application/pdf' });
+  });
+  const sClient = () => storageOf('cli', 'ceo@client.ru');
+  await assertSucceeds(sClient().ref('client-docs/p1/c1/contract.pdf').getMetadata());
+  await assertFails(sClient().ref('client-docs/p2/c2/contract.pdf').getMetadata());
+  await assertFails(sClient().ref('documents/m1/d1/contract.pdf').getMetadata());
+  await assertFails(sClient().ref('client-docs/p1/c9/my.pdf').put(pdf, { contentType: 'application/pdf' }));
+  await assertFails(sEmployee().ref('client-docs/p1/c1/contract.pdf').getMetadata());
+  await assertSucceeds(sAdmin().ref('client-docs/p1/c8/act.pdf').put(pdf, { contentType: 'application/pdf' }));
 });

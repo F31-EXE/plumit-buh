@@ -8,6 +8,7 @@ import IterationForm from '../components/IterationForm.jsx';
 import MonthGrid from '../components/MonthGrid.jsx';
 import OperationsList from '../components/OperationsList.jsx';
 import ProjectForm from '../components/ProjectForm.jsx';
+import ClientTab from '../components/ClientTab.jsx';
 
 export default function Project() {
   const { id } = useParams();
@@ -38,7 +39,7 @@ export default function Project() {
         )}
       </div>
 
-      <Tabs value={tab} onChange={setTab} options={[['overview', 'Обзор'], ['iterations', `Итерации · ${p.iterations.length}`], ['operations', 'Операции'], ['calendar', 'По дням']]} />
+      <Tabs value={tab} onChange={setTab} options={[['overview', 'Обзор'], ['iterations', `Итерации · ${p.iterations.length}`], ['operations', 'Операции'], ['calendar', 'По дням'], ['client', 'Заказчик']]} />
 
       {tab === 'overview' && <Overview p={p} s={s} />}
       {tab === 'iterations' && <Iterations p={p} onEdit={setIterForm} />}
@@ -46,6 +47,7 @@ export default function Project() {
         <div className="card flush"><OperationsList operations={ops} showProject={false} /></div>
       )}
       {tab === 'calendar' && <Calendar p={p} operations={ops} />}
+      {tab === 'client' && <ClientTab p={p} />}
 
       {editing && (
         <ProjectForm project={p} onClose={() => setEditing(false)} onSaved={(pid) => { setEditing(false); if (!pid) navigate('/projects'); }} />

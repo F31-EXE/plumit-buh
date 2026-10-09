@@ -1,6 +1,6 @@
 // Все записи в Firestore. Проверки здесь дают понятные сообщения; окончательно данные проверяют правила firestore.rules.
 import {
-  collection, doc, getDocs, query, where, writeBatch,
+  arrayRemove, arrayUnion, collection, doc, getDoc, getDocs, query, where, writeBatch,
 } from 'firebase/firestore';
 import { db, storage } from './firebase.js';
 import { deleteObject, ref as storageRef, uploadBytesResumable } from 'firebase/storage';
@@ -194,7 +194,7 @@ export function deleteIteration(id) {
 }
 
 // ---------- Доступ ----------
-export function grantAccess(email, role, name, memberId) {
+export function grantAccess(email, role, name, memberId, projectIds) {
   const key = emailKey(email);
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(key)) fail('Введите корректный email');
   const r = ['admin', 'viewer', 'employee'].includes(role) ? role : 'viewer';
@@ -203,7 +203,12 @@ export function grantAccess(email, role, name, memberId) {
     if (!memberId) fail('Выберите, какой участник команды — этот сотрудник');
     data.member_id = String(memberId);
   }
-  const roleLabel = { admin: 'администратор', viewer: 'только просмотр', employee: 'сотрудник' }[r];
+  if (r === 'client') {
+    const ids = [...new Set((projectIds || []).map(String))];
+    if (!ids.length) fail('Отметьте хотя бы один проект заказчика');
+    data.project_ids = ids;
+  }
+  const roleLabel = { admin: 'администратор', viewer: 'только просмотр', employee: 'сотрудник', client: 'заказчик' }[r];
   commit((b) => b.set(doc(db, 'access', key), data), [['create', 'access', key, { label: `${key} — ${roleLabel}${data.name ? ` (${data.name})` : ''}` }]]);
 }
 export function revokeAccess(email) {
@@ -236,17 +241,17 @@ const safeFileName = (name) => String(name).replace(/[\/\\#?%*:|"<>\u0000-\u001f
 export function uploadDocument(f, file, onProgress) {
   if (!storage) fail('Хранилище файлов не настроено — нужен тариф Blaze (см. README)');
   const title = str(f.title, 300) || file.name;
-  if (!ref(f.member_id)) fail('Выберите сотрудника');
+  const owner = docOwner(f);
   const contentType = fileMime(file);
   if (!contentType) fail('Такой тип файла не поддерживается. Подойдут PDF, Word, Excel, картинки, текст, архив');
   if (file.size > MAX_FILE_MB * 1024 * 1024) fail(`Файл больше ${MAX_FILE_MB} МБ`);
   const docRef = newRef('documents');
-  const path = `documents/${f.member_id}/${docRef.id}/${safeFileName(file.name)}`;
+  const path = `${owner.folder}/${docRef.id}/${safeFileName(file.name)}`;
   const task = uploadBytesResumable(storageRef(storage, path), file, { contentType });
   return new Promise((resolve, reject) => {
     task.on('state_changed', (s) => onProgress?.(s.bytesTransferred / s.totalBytes), reject, () => {
       const data = {
-        member_id: String(f.member_id),
+        ...owner.field,
         title,
         kind: DOC_KINDS[f.kind] ? f.kind : 'other',
         storage_path: path,
@@ -264,13 +269,20 @@ export function uploadDocument(f, file, onProgress) {
   });
 }
 
+// Владелец документа: сотрудник (его кабинет) или проект (кабинет заказчика)
+function docOwner(f) {
+  if (ref(f.member_id)) return { field: { member_id: String(f.member_id) }, folder: `documents/${f.member_id}` };
+  if (ref(f.project_id)) return { field: { project_id: String(f.project_id) }, folder: `client-docs/${f.project_id}` };
+  return fail('Не указано, чей это документ');
+}
+
 export function saveDocument(id, f) {
   const title = str(f.title, 300);
   if (!title) fail('Укажите название документа');
-  if (!ref(f.member_id)) fail('Выберите сотрудника');
+  const owner = docOwner(f);
   const existing = id ? find('documents', id) : null;
   const data = {
-    member_id: String(f.member_id),
+    ...owner.field,
     title,
     kind: DOC_KINDS[f.kind] ? f.kind : 'other',
     date: optDate(f.date),
@@ -377,16 +389,47 @@ export function stableJson(v) {
   if (v && typeof v === 'object') return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${stableJson(v[k])}`).join(',')}}`;
   return JSON.stringify(v ?? null);
 }
-// Записывает только изменившиеся выписки и удаляет выписки удалённых участников
-export function writeStatements(desired, existing) {
+// Записывает только изменившиеся выписки (statements / client_views) и удаляет лишние
+export function writeViews(col, desired, existing) {
   const batch = writeBatch(db);
   let n = 0;
-  for (const [mid, st] of desired) {
-    if (existing.get(mid) !== stableJson(st)) { batch.set(doc(db, 'statements', mid), st); n++; }
+  for (const [key, st] of desired) {
+    if (n >= 450) break; // лимит батча; остальное допишется на следующем проходе
+    if (existing.get(key) !== stableJson(st)) { batch.set(doc(db, col, key), st); n++; }
   }
-  for (const mid of existing.keys()) {
-    if (!desired.has(mid)) { batch.delete(doc(db, 'statements', mid)); n++; }
+  for (const key of existing.keys()) {
+    if (n >= 450) break;
+    if (!desired.has(key)) { batch.delete(doc(db, col, key)); n++; }
   }
   if (n) fire(batch.commit());
   return n;
+}
+
+// ---------- Доступ заказчика к проекту ----------
+// Добавляет проект в доступ заказчика (создаёт доступ, если его не было)
+export async function addClientProject(email, projectId, name) {
+  const key = emailKey(email);
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(key)) fail('Введите корректный email');
+  const snap = await getDoc(doc(db, 'access', key));
+  if (snap.exists() && snap.data().role !== 'client') {
+    fail('У этого email уже есть другая роль в студии — заказчику нужен отдельный email');
+  }
+  const project = find('projects', projectId)?.name || '';
+  if (snap.exists()) {
+    await commit((b) => b.update(doc(db, 'access', key), { project_ids: arrayUnion(String(projectId)) }),
+      [['update', 'access', key, { label: `${key} — заказчик: + проект «${project}»` }]]);
+  } else {
+    await commit((b) => b.set(doc(db, 'access', key), { role: 'client', name: str(name, 100), added_ms: Date.now(), project_ids: [String(projectId)] }),
+      [['create', 'access', key, { label: `${key} — заказчик проекта «${project}»` }]]);
+  }
+}
+// Убирает проект из доступа заказчика; если проектов не осталось — закрывает доступ
+export function removeClientProject(email, projectId, projectIds) {
+  const key = emailKey(email);
+  const project = find('projects', projectId)?.name || '';
+  if ((projectIds || []).filter((p) => p !== projectId).length === 0) {
+    return commit((b) => b.delete(doc(db, 'access', key)), [['delete', 'access', key, { label: `${key} — заказчик проекта «${project}»` }]]);
+  }
+  return commit((b) => b.update(doc(db, 'access', key), { project_ids: arrayRemove(String(projectId)) }),
+    [['update', 'access', key, { label: `${key} — заказчик: − проект «${project}»` }]]);
 }

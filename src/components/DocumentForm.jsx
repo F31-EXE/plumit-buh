@@ -12,7 +12,9 @@ const STORAGE_ERRORS = {
 };
 const storageError = (e) => new Error(STORAGE_ERRORS[e?.code] || e?.message || 'Ошибка');
 
-export default function DocumentForm({ memberId, document, onClose }) {
+// Владелец документа: memberId (кабинет сотрудника) или projectId (кабинет заказчика)
+export default function DocumentForm({ memberId, projectId, document, onClose }) {
+  const owner = memberId ? { member_id: memberId } : { project_id: projectId };
   const toast = useToast();
   const isFileDoc = Boolean(document?.storage_path);
   const [mode, setMode] = useState(document ? (isFileDoc ? 'file' : 'link') : (storage ? 'file' : 'link'));
@@ -41,10 +43,10 @@ export default function DocumentForm({ memberId, document, onClose }) {
       if (!document && mode === 'file') {
         if (!file) throw new Error('Выберите файл');
         setProgress(0);
-        await uploadDocument({ ...f, member_id: memberId }, file, setProgress);
+        await uploadDocument({ ...f, ...owner }, file, setProgress);
         toast('Файл загружен');
       } else {
-        saveDocument(document?.id, { ...f, member_id: memberId });
+        saveDocument(document?.id, { ...f, ...owner });
         toast('Документ сохранён');
       }
       onClose();
@@ -107,8 +109,8 @@ export default function DocumentForm({ memberId, document, onClose }) {
           )}
           <Field label="Заметки" className="full"><input className="input" value={f.notes} onChange={set('notes')} /></Field>
         </div>
-        {mode === 'link' && !isFileDoc && <div className="faint small">Откройте доступ по ссылке на диске, иначе сотрудник не сможет открыть файл.</div>}
-        {mode === 'file' && !document && <div className="faint small">Файл увидит только этот сотрудник и администраторы.</div>}
+        {mode === 'link' && !isFileDoc && <div className="faint small">Откройте доступ по ссылке на диске, иначе {memberId ? 'сотрудник' : 'заказчик'} не сможет открыть файл.</div>}
+        {mode === 'file' && !document && <div className="faint small">{memberId ? 'Файл увидит только этот сотрудник и администраторы.' : 'Файл увидят заказчики этого проекта и администраторы.'}</div>}
         <ErrorBox error={error} />
       </form>
     </Modal>

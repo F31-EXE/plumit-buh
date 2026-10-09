@@ -153,7 +153,7 @@ const CASH_COLUMNS = [
 function summarySheet(wb, data, report) {
   const ws = wb.addWorksheet('Сводка', { views: [{ showGridLines: false }] });
   ws.columns = [{ width: 34 }, ...Array(6).fill({ width: 18 })];
-  title(ws, 'Plumit · Бухгалтерия — отчёт', 15);
+  title(ws, 'Plumit · Менеджер проектов — отчёт', 15);
   const period = report.from === report.to ? monthName(report.from) : `${monthName(report.from)} — ${monthName(report.to)}`;
   ws.addRow([`Период: ${period}${report.projectId ? ` · проект «${data.projects.find((p) => p.id === report.projectId)?.name}»` : ''}`]);
   ws.addRow([`Сформирован: ${new Date().toLocaleString('ru-RU')}`]).font = { color: { argb: 'FF8D899A' } };
@@ -267,7 +267,7 @@ function projectSheet(wb, data, project, report, used) {
 // Собирает книгу Excel. ExcelJS передаётся снаружи: в браузере он загружается только при выгрузке.
 export function buildWorkbook(ExcelJS, data, report) {
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'Plumit · Бухгалтерия';
+  wb.creator = 'Plumit · Менеджер проектов';
   wb.created = new Date();
   summarySheet(wb, data, report);
   const used = new Set(['сводка']);

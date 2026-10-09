@@ -288,3 +288,39 @@ export function accountSummary(account, ops, today) {
     effectiveYield: Math.round(effectiveYield(rate, account.capitalization) * 10000) / 100,
   };
 }
+
+// ---------- Кабинет заказчика ----------
+// Что видит заказчик по своему проекту: пункты договора, этап, оплаты и суммы к оплате.
+// Без долей команды, выплат, расходов, налогов и внутренних комментариев. Суммы в копейках.
+export function clientView(data, projectId) {
+  const p = data.projects.find((x) => x.id === projectId);
+  if (!p) return null;
+  const items = data.iterations
+    .filter((it) => it.project_id === projectId && it.status !== 'cancelled')
+    .sort((a, b) => (a.sort || 0) - (b.sort || 0) || (a.created_ms || 0) - (b.created_ms || 0))
+    .map((it) => ({ title: it.title, status: it.status, price: it.price || 0, date: it.date || null }));
+  const payments = data.operations
+    .filter((o) => o.project_id === projectId && o.type === 'income')
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+    .map((o) => ({ date: o.date, amount: o.amount, is_advance: !!o.is_advance }));
+  const paid = payments.reduce((a, x) => a + x.amount, 0);
+  const doneValue = items.filter((it) => it.status === 'done').reduce((a, it) => a + it.price, 0);
+  const budget = p.budget || 0;
+  return {
+    project_id: projectId,
+    name: p.name,
+    client: p.client || '',
+    status: p.status,
+    start_date: p.start_date || null,
+    budget,
+    paid,
+    advance: payments.filter((x) => x.is_advance).reduce((a, x) => a + x.amount, 0),
+    remaining: Math.max(0, budget - paid),
+    done_value: doneValue,
+    // к оплате сейчас: сдано работ больше, чем уже оплачено
+    due_now: Math.max(0, doneValue - paid),
+    progress: { done: items.filter((it) => it.status === 'done').length, in_work: items.filter((it) => it.status === 'in_work').length, total: items.length },
+    items,
+    payments,
+  };
+}

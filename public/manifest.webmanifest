@@ -1,7 +1,7 @@
 {
-  "name": "Plumit · Бухгалтерия",
-  "short_name": "Plumit Бух",
-  "description": "Учёт денег по проектам студии Plumit",
+  "name": "Plumit · Менеджер проектов",
+  "short_name": "Plumit",
+  "description": "Проекты, команда и деньги студии Plumit",
   "lang": "ru",
   "start_url": "/",
   "scope": "/",

@@ -188,3 +188,18 @@ test('CSV: значения-формулы экранируются (защит�
   assert.ok(text.includes(`"'+cmd"`) && text.includes(`"'-1"`) && text.includes(`"'@x"`));
   assert.ok(text.includes('"10"'));
 });
+
+test('кабинет заказчика: пункты, оплаты и суммы — без внутренних данных', async () => {
+  const { clientView } = await import('../src/lib/finance.js');
+  const v = clientView(data, 'p');
+  assert.equal(v.budget, 10000000);
+  assert.equal(v.paid, 6000000);
+  assert.equal(v.remaining, 4000000);
+  assert.equal(v.done_value, 5000000);
+  assert.equal(v.due_now, 0);                       // сдано на 50 000, оплачено 60 000
+  assert.deepEqual(v.items.map((i) => i.title), ['1']); // отменённый пункт не показываем
+  assert.deepEqual(v.progress, { done: 1, in_work: 0, total: 1 });
+  assert.deepEqual(v.payments, [{ date: '2026-05-01', amount: 6000000, is_advance: true }]);
+  const json = JSON.stringify(v);
+  for (const secret of ['shares', 'Денис', 'Анна', 'Сервера', 'payout', 'member']) assert.equal(json.includes(secret), false, secret);
+});

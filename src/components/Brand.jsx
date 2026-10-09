@@ -1,11 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 
 // ---------- Пасхалка: три быстрых нажатия на логотип открывают видео со звуком ----------
-const EggCtx = createContext(() => {});
+const EggCtx = createContext({ tap: () => {}, enabled: false });
 const TAP_GAP_MS = 700; // максимальная пауза между соседними нажатиями
 
-export function EasterEggProvider({ children }) {
+// enabled — пасхалка работает только у администраторов
+export function EasterEggProvider({ children, enabled = false }) {
   const [open, setOpen] = useState(false);
   const [needsTap, setNeedsTap] = useState(false);
   const videoRef = useRef(null);
@@ -21,6 +22,7 @@ export function EasterEggProvider({ children }) {
   }, []);
 
   const tap = useCallback(() => {
+    if (!enabled) return;
     const now = Date.now();
     const last = taps.current.at(-1);
     taps.current = last && now - last < TAP_GAP_MS ? [...taps.current, now] : [now];
@@ -29,13 +31,15 @@ export function EasterEggProvider({ children }) {
       flushSync(() => setOpen(true)); // видео должно оказаться в DOM синхронно, до play()
       play();
     }
-  }, [play]);
+  }, [play, enabled]);
 
   const close = useCallback(() => {
     videoRef.current?.pause();
     setOpen(false);
     setNeedsTap(false);
   }, []);
+
+  const eggValue = useMemo(() => ({ tap, enabled }), [tap, enabled]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -45,7 +49,7 @@ export function EasterEggProvider({ children }) {
   }, [open, close]);
 
   return (
-    <EggCtx.Provider value={tap}>
+    <EggCtx.Provider value={eggValue}>
       {children}
       {open && createPortal(
         <div className="egg" onClick={close} role="dialog" aria-label="Пасхалка">
@@ -71,8 +75,9 @@ export function EasterEggProvider({ children }) {
 
 // ---------- Логотип ----------
 export function Logo({ size = 40 }) {
-  const tap = useContext(EggCtx);
+  const { tap, enabled } = useContext(EggCtx);
   const onClick = (e) => {
+    if (!enabled) return;
     // Перезапуск анимации покачивания на каждое нажатие
     const el = e.currentTarget;
     el.classList.remove('wiggle');
@@ -80,14 +85,14 @@ export function Logo({ size = 40 }) {
     el.classList.add('wiggle');
     tap();
   };
-  return <img src="/logo.png" alt="Plumit" width={size} height={size} className="logo" draggable={false} onClick={onClick} />;
+  return <img src="/logo.png" alt="Plumit" width={size} height={size} className={`logo${enabled ? ' egg-on' : ''}`} draggable={false} onClick={onClick} />;
 }
 
 export function Brand({ size = 40 }) {
   return (
     <div className="brand">
       <Logo size={size} />
-      <div>Plumit<small>Бухгалтерия проектов</small></div>
+      <div>Plumit<small>Менеджер проектов</small></div>
     </div>
   );
 }

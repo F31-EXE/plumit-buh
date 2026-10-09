@@ -28,8 +28,9 @@ export function useAccess(user) {
       doc(db, 'access', emailKey(user.email)),
       (snap) => {
         const d = snap.exists() ? snap.data() : null;
-        const ok = d && (['admin', 'viewer'].includes(d.role) || (d.role === 'employee' && d.member_id));
-        setAccess(ok ? { role: d.role, member_id: d.member_id || null } : null);
+        const ok = d && (['admin', 'viewer'].includes(d.role) || (d.role === 'employee' && d.member_id)
+          || (d.role === 'client' && d.project_ids?.length));
+        setAccess(ok ? { role: d.role, member_id: d.member_id || null, project_ids: d.project_ids || [] } : null);
       },
       () => setAccess(null),
     );
@@ -76,5 +77,30 @@ export function useEmployeeData(memberId) {
     );
     return () => { u1(); u2(); };
   }, [memberId]);
+  return state;
+}
+
+// Данные заказчика: кабинеты его проектов и документы этих проектов
+export function useClientData(projectIds) {
+  const key = projectIds.join(',');
+  const [state, setState] = useState({ ready: false, error: null, views: {}, documents: {} });
+  useEffect(() => {
+    const ids = key ? key.split(',') : [];
+    const loaded = new Set();
+    const mark = (k) => { loaded.add(k); return loaded.size === ids.length * 2; };
+    const fail = (error) => setState((s) => ({ ...s, error, ready: true }));
+    const unsubs = ids.flatMap((pid) => [
+      onSnapshot(doc(db, 'client_views', pid), (snap) => {
+        const ready = mark(`v${pid}`);
+        setState((s) => ({ ...s, ready: s.ready || ready, views: { ...s.views, [pid]: snap.exists() ? snap.data() : null } }));
+      }, fail),
+      onSnapshot(query(collection(db, 'documents'), where('project_id', '==', pid)), (snap) => {
+        const ready = mark(`d${pid}`);
+        setState((s) => ({ ...s, ready: s.ready || ready, documents: { ...s.documents, [pid]: snap.docs.map((d) => ({ id: d.id, ...d.data() })) } }));
+      }, fail),
+    ]);
+    if (!ids.length) setState((s) => ({ ...s, ready: true }));
+    return () => unsubs.forEach((u) => u());
+  }, [key]);
   return state;
 }
