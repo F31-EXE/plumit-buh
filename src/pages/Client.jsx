@@ -62,7 +62,7 @@ function ClientProjects({ projects }) {
           return (
             <Link key={v.project_id} to={`/p/${v.project_id}`} className="card project-card">
               <div className="spread">
-                <h2 className="grow ellipsis">{v.name}</h2>
+                <h2 className="grow clamp-2">{v.name}</h2>
                 <span className={`badge ${v.status}`}>{PROJECT_STATUS[v.status]}</span>
               </div>
               <div>

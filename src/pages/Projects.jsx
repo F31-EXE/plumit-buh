@@ -38,7 +38,7 @@ export default function Projects() {
             <Link key={p.id} to={`/projects/${p.id}`} className="card project-card">
               <div className="spread">
                 <div className="grow">
-                  <h2 className="ellipsis">{p.name}</h2>
+                  <h2 className="clamp-2">{p.name}</h2>
                   <div className="faint small ellipsis">{p.client || 'Клиент не указан'}</div>
                 </div>
                 <span className={`badge ${p.status}`}>{PROJECT_STATUS[p.status]}</span>
